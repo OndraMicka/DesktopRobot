@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(desktop_robot_simulator LANGUAGES CXX)
+project(buzzer_test LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(desktop_robot_simulator
-    src/main.cpp
+add_executable(buzzer_test
+    main.cpp
 )

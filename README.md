@@ -42,9 +42,15 @@ The final firmware will run on the ESP32-C3 and control the physical OLED displa
 ```text
 desktop-robot/
 │
-├── simulator/          # C++ PC simulator
-│   ├── src/
-│   └── CMakeLists.txt
+├── testing/            # PC testing applications
+│   ├── simulator/       # PC simulator
+│   │   ├── src/
+│   │   │   ├── animation/
+│   │   │   └── sound/
+│   │   │       └── backends/pc/
+│   │   └── CMakeLists.txt
+│   ├── buzzer_test/     # Standalone buzzer sound test
+│   └── CMakeLists.txt   # Builds all testing applications
 │
 ├── esp32/              # ESP32 firmware
 │   ├── src/
@@ -56,6 +62,10 @@ desktop-robot/
 │
 └── docs/               # Project documentation
 ```
+
+Build all PC testing applications with CMake using `testing/` as the source
+directory. Simulator sound descriptions are separate from the PC audio
+backend, allowing the sound behavior to be reused with ESP32 buzzer output.
 
 ## Development
 
@@ -83,4 +93,3 @@ The goal is to keep the face and animation logic as independent from the display
 ## Goal
 
 The goal is to create a small interactive device that feels like a simple digital companion.
-

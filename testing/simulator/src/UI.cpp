@@ -1,6 +1,7 @@
 #include "UI.h"
 
 #include <cctype>
+#include <string>
 
 namespace desktoprobot
 {
@@ -118,9 +119,14 @@ namespace desktoprobot
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &button.rect);
 
-        const int textX = button.rect.x + 10;
+        const int labelLength = static_cast<int>(std::char_traits<char>::length(button.label));
+        const int textScale = (labelLength * 12 + 16 > button.rect.w)
+            ? 1
+            : 2;
+        const int textWidth = labelLength * 6 * textScale;
+        const int textX = button.rect.x + (button.rect.w - textWidth) / 2;
         const int textY = button.rect.y + (button.rect.h / 2) - 4;
-        drawText(renderer, button.label, textX, textY, 2, textColor);
+        drawText(renderer, button.label, textX, textY, textScale, textColor);
     }
 
     void drawPanelHeader(SDL_Renderer* renderer, int x, int y, int w, int h, const char* title)

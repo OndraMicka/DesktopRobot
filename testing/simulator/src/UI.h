@@ -2,7 +2,7 @@
 
 #include <SDL2/SDL.h>
 
-#include "Animation.h"
+#include "animation/Animation.h"
 
 namespace desktoprobot
 {
@@ -10,8 +10,6 @@ namespace desktoprobot
     {
         const char* label;
         SDL_Rect rect;
-        const Animation* animation;
-        bool isLoop;
         bool active;
         bool hovered;
     };
