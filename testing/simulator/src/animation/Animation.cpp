@@ -18,8 +18,19 @@ namespace desktoprobot
                 framebuffer.drawRect(command.x1, command.y1, command.x2, command.y2);
                 break;
 
+            case DrawCommandType::RoundedRectangle:
+                framebuffer.drawRoundedRect(
+                    command.x1,
+                    command.y1,
+                    command.x2,
+                    command.y2,
+                    command.radius,
+                    command.filled
+                );
+                break;
+
             case DrawCommandType::Line:
-                framebuffer.drawLine(command.x1, command.y1, command.x2, command.y2);
+                framebuffer.drawLine(command.x1, command.y1, command.x2, command.y2, command.filled);
                 break;
 
             case DrawCommandType::Circle:

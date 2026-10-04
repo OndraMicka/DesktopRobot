@@ -5,12 +5,14 @@
 namespace desktoprobot
 {
     constexpr DrawCommand idleFrame1[] = {
-        rectangle(25, 18, 20, 12), rectangle(83, 18, 20, 12),
-        rectangle(45, 46, 38, 3)
+        roundedRectangle(17, 14, 36, 27, 10), roundedRectangle(75, 14, 36, 27, 10),
+        roundedRectangle(31, 23, 8, 15, 4, false), roundedRectangle(89, 23, 8, 15, 4, false),
+        roundedRectangle(53, 49, 22, 3, 1)
     };
     constexpr DrawCommand idleFrame2[] = {
-        rectangle(25, 18, 20, 12), rectangle(83, 18, 20, 12),
-        rectangle(45, 46, 38, 3)
+        roundedRectangle(17, 14, 36, 27, 10), roundedRectangle(75, 14, 36, 27, 10),
+        roundedRectangle(31, 23, 8, 15, 4, false), roundedRectangle(89, 23, 8, 15, 4, false),
+        roundedRectangle(53, 49, 22, 3, 1)
     };
     constexpr Frame idleFrames[] = {
         { 500, idleFrame1, sizeof(idleFrame1) / sizeof(idleFrame1[0]) },

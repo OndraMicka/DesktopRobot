@@ -5,16 +5,18 @@
 namespace desktoprobot
 {
     constexpr DrawCommand blinkFrameOpen[] = {
-        rectangle(25, 18, 20, 12), rectangle(83, 18, 20, 12),
-        rectangle(45, 46, 38, 3)
+        roundedRectangle(17, 14, 36, 27, 10), roundedRectangle(75, 14, 36, 27, 10),
+        roundedRectangle(31, 23, 8, 15, 4, false), roundedRectangle(89, 23, 8, 15, 4, false),
+        roundedRectangle(53, 49, 22, 3, 1)
     };
     constexpr DrawCommand blinkFrameHalf[] = {
-        rectangle(25, 22, 20, 5), rectangle(83, 22, 20, 5),
-        rectangle(45, 46, 38, 3)
+        roundedRectangle(17, 19, 36, 18, 8), roundedRectangle(75, 19, 36, 18, 8),
+        roundedRectangle(31, 26, 8, 7, 3, false), roundedRectangle(89, 26, 8, 7, 3, false),
+        roundedRectangle(53, 49, 22, 3, 1)
     };
     constexpr DrawCommand blinkFrameClosed[] = {
-        rectangle(25, 24, 20, 2), rectangle(83, 24, 20, 2),
-        rectangle(45, 46, 38, 3)
+        roundedRectangle(17, 26, 36, 5, 2), roundedRectangle(75, 26, 36, 5, 2),
+        roundedRectangle(57, 50, 14, 2, 1)
     };
     constexpr Frame blinkFrames[] = {
         { 100, blinkFrameOpen, sizeof(blinkFrameOpen) / sizeof(blinkFrameOpen[0]) },

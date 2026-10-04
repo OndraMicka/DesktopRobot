@@ -5,12 +5,12 @@
 namespace desktoprobot
 {
     constexpr DrawCommand sleepFrame1[] = {
-        line(25, 24, 45, 24), line(83, 24, 103, 24),
-        rectangle(58, 49, 12, 2)
+        roundedRectangle(17, 25, 36, 6, 3), roundedRectangle(75, 25, 36, 6, 3),
+        line(56, 50, 72, 50)
     };
     constexpr DrawCommand sleepFrame2[] = {
-        line(25, 25, 45, 25), line(83, 25, 103, 25),
-        rectangle(57, 49, 14, 2)
+        roundedRectangle(17, 26, 36, 5, 2), roundedRectangle(75, 26, 36, 5, 2),
+        line(56, 50, 72, 50)
     };
     constexpr Frame sleepFrames[] = {
         { 350, sleepFrame1, sizeof(sleepFrame1) / sizeof(sleepFrame1[0]) },

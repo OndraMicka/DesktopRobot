@@ -1,5 +1,6 @@
 #include "Framebuffer.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 namespace desktoprobot
@@ -63,6 +64,45 @@ namespace desktoprobot
             for (int column = x; column < x + width; ++column)
             {
                 setPixel(column, row, value);
+            }
+        }
+    }
+
+    void Framebuffer::drawRoundedRect(int x, int y, int width, int height, int radius, bool value)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        const int cornerRadius = radius < 0
+            ? std::min(width, height) / 2
+            : std::min(radius, std::min(width, height) / 2);
+        const int radiusSquared = cornerRadius * cornerRadius;
+
+        for (int row = 0; row < height; ++row)
+        {
+            int inset = 0;
+            if (cornerRadius > 0 && row < cornerRadius)
+            {
+                const int dy = cornerRadius - row - 1;
+                while (inset < cornerRadius && inset * inset + dy * dy <= radiusSquared)
+                {
+                    ++inset;
+                }
+            }
+            else if (cornerRadius > 0 && row >= height - cornerRadius)
+            {
+                const int dy = row - (height - cornerRadius);
+                while (inset < cornerRadius && inset * inset + dy * dy <= radiusSquared)
+                {
+                    ++inset;
+                }
+            }
+
+            for (int column = inset; column < width - inset; ++column)
+            {
+                setPixel(x + column, y + row, value);
             }
         }
     }

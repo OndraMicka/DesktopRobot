@@ -11,6 +11,7 @@ namespace desktoprobot
     {
         Pixel,
         Rectangle,
+        RoundedRectangle,
         Line,
         Circle
     };
@@ -23,6 +24,7 @@ namespace desktoprobot
         int x2;
         int y2;
         bool filled;
+        int radius = -1;
     };
 
     constexpr DrawCommand pixel(int x, int y)
@@ -35,14 +37,19 @@ namespace desktoprobot
         return { DrawCommandType::Rectangle, x, y, width, height, true };
     }
 
-    constexpr DrawCommand line(int x1, int y1, int x2, int y2)
+    constexpr DrawCommand line(int x1, int y1, int x2, int y2, bool value = true)
     {
-        return { DrawCommandType::Line, x1, y1, x2, y2, false };
+        return { DrawCommandType::Line, x1, y1, x2, y2, value };
     }
 
     constexpr DrawCommand circle(int centerX, int centerY, int radius, bool filled = false)
     {
         return { DrawCommandType::Circle, centerX, centerY, radius, 0, filled };
+    }
+
+    constexpr DrawCommand roundedRectangle(int x, int y, int width, int height, int radius, bool filled = true)
+    {
+        return { DrawCommandType::RoundedRectangle, x, y, width, height, filled, radius };
     }
 
     struct Frame

@@ -5,14 +5,16 @@
 namespace desktoprobot
 {
     constexpr DrawCommand smileFrame1[] = {
-        rectangle(25, 18, 20, 12), rectangle(83, 18, 20, 12),
-        line(45, 45, 53, 50), line(53, 50, 64, 52),
-        line(64, 52, 75, 50), line(75, 50, 83, 45)
+        roundedRectangle(17, 14, 36, 27, 10), roundedRectangle(75, 14, 36, 27, 10),
+        roundedRectangle(31, 23, 8, 15, 4, false), roundedRectangle(89, 23, 8, 15, 4, false),
+        line(49, 46, 56, 51), line(56, 51, 64, 53),
+        line(64, 53, 72, 51), line(72, 51, 79, 46)
     };
     constexpr DrawCommand smileFrame2[] = {
-        rectangle(25, 17, 20, 13), rectangle(83, 17, 20, 13),
-        line(45, 44, 53, 51), line(53, 51, 64, 53),
-        line(64, 53, 75, 51), line(75, 51, 83, 44)
+        roundedRectangle(17, 15, 36, 25, 10), roundedRectangle(75, 15, 36, 25, 10),
+        roundedRectangle(31, 22, 8, 14, 4, false), roundedRectangle(89, 22, 8, 14, 4, false),
+        line(49, 45, 56, 51), line(56, 51, 64, 54),
+        line(64, 54, 72, 51), line(72, 51, 79, 45)
     };
     constexpr Frame smileFrames[] = {
         { 180, smileFrame1, sizeof(smileFrame1) / sizeof(smileFrame1[0]) },
