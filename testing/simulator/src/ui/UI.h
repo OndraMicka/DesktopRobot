@@ -2,7 +2,7 @@
 
 #include <SDL2/SDL.h>
 
-#include "animation/Animation.h"
+#include "../animation/Animation.h"
 
 namespace desktoprobot
 {

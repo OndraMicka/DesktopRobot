@@ -36,174 +36,73 @@ namespace desktoprobot
     {
     }
 
-    void SoundPlayer::playHappy()
-    {
-        static const SoundDefinition sound = {
-            tone(400, 425, 35), tone(425, 390, 30), tone(390, 445, 35), tone(445, 470, 45),
-            pause(25),
-            tone(470, 620, 220),
-            pause(30),
-            tone(620, 800, 180),
-            pause(25),
-            tone(800, 680, 130),
-            pause(25),
-            tone(680, 920, 250),
-            pause(30),
-            tone(920, 1050, 350)
-        };
-        playSound(backend_, sound);
-    }
-
     void SoundPlayer::play(SoundEffect effect)
     {
         switch (effect)
         {
-        case SoundEffect::Happy:
-            playHappy();
-            break;
-        case SoundEffect::SuperHappy:
-            playSuperHappy();
-            break;
-        case SoundEffect::Cuddly:
-            playCuddly();
-            break;
         case SoundEffect::Angry:
             playAngry();
-            break;
-        case SoundEffect::Surprised:
-            playSurprised();
-            break;
-        case SoundEffect::Sleep:
-            playSleep();
-            break;
-        case SoundEffect::Friendly:
-            playFriendly();
-            break;
-        case SoundEffect::WakeUp:
-            playWakeUp();
-            break;
-        case SoundEffect::Hum:
-            playHum();
-            break;
-        case SoundEffect::Content:
-            playContent();
             break;
         case SoundEffect::Bored:
             playBored();
             break;
+        case SoundEffect::Yawn:
+            playYawn();
+            break;
+        case SoundEffect::Hum:
+            playHum();
+            break;
         }
-    }
-
-    void SoundPlayer::playSuperHappy()
-    {
-        static const SoundDefinition sound = {
-            tone(520, 760, 100), tone(760, 650, 65), tone(650, 880, 110),
-            pause(25),
-            tone(880, 1180, 160), tone(1180, 980, 70), tone(980, 1320, 180)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playCuddly()
-    {
-        static const SoundDefinition sound = {
-            tone(430, 490, 170),
-            pause(35),
-            tone(490, 440, 140),
-            pause(45),
-            tone(440, 540, 210),
-            pause(35),
-            tone(540, 500, 260)
-        };
-        playSound(backend_, sound);
     }
 
     void SoundPlayer::playAngry()
     {
+        // Low, clipped servo bursts rather than high-pitched chirps.
         static const SoundDefinition sound = {
-            tone(260, 340, 55), tone(340, 250, 45), tone(250, 350, 55), tone(350, 240, 50),
-            pause(25),
-            tone(300, 390, 95), tone(390, 290, 75), tone(290, 370, 95)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playSurprised()
-    {
-        static const SoundDefinition sound = {
-            tone(300, 1050, 180),
-            pause(45),
-            tone(1050, 720, 150)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playSleep()
-    {
-        static const SoundDefinition sound = {
-            tone(520, 430, 240),
-            pause(70),
-            tone(430, 350, 300),
-            pause(90),
-            tone(350, 260, 420)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playFriendly()
-    {
-        static const SoundDefinition sound = {
-            tone(520, 660, 180),
-            pause(35),
-            tone(660, 780, 180),
-            pause(35),
-            tone(780, 720, 260)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playWakeUp()
-    {
-        static const SoundDefinition sound = {
-            tone(260, 390, 280),
-            pause(45),
-            tone(390, 620, 220),
-            pause(35),
-            tone(620, 740, 180)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playHum()
-    {
-        static const SoundDefinition sound = {
-            tone(390, 430, 130),
-            pause(20),
-            tone(430, 470, 170),
-            pause(25),
-            tone(470, 420, 130),
-            pause(20),
-            tone(420, 520, 210)
-        };
-        playSound(backend_, sound);
-    }
-
-    void SoundPlayer::playContent()
-    {
-        static const SoundDefinition sound = {
-            tone(480, 560, 240),
-            pause(30),
-            tone(560, 620, 300)
+            tone(145, 185, 85), pause(35),
+            tone(185, 140, 110), pause(45),
+            tone(140, 195, 85), pause(30),
+            tone(175, 115, 240)
         };
         playSound(backend_, sound);
     }
 
     void SoundPlayer::playBored()
     {
+        // A flat acknowledgement followed by a slow electronic grumble.
         static const SoundDefinition sound = {
-            tone(300, 270, 130),
-            pause(25),
-            tone(270, 245, 180)
+            tone(165, 165, 150), pause(120),
+            tone(155, 110, 480), pause(80),
+            tone(110, 105, 180)
+        };
+        playSound(backend_, sound);
+    }
+
+    void SoundPlayer::playYawn()
+    {
+        // A motor winds up, lingers, then runs down with a short tired tail.
+        static const SoundDefinition sound = {
+            tone(120, 190, 420),
+            tone(190, 270, 460),
+            tone(270, 245, 280),
+            tone(245, 105, 650), pause(90),
+            tone(105, 90, 170)
+        };
+        playSound(backend_, sound);
+    }
+
+    void SoundPlayer::playHum()
+    {
+        // Original low-register motif, played independently of face animations.
+        static const SoundDefinition sound = {
+            tone(196, 196, 220), pause(70),
+            tone(196, 196, 140), pause(70),
+            tone(146.83f, 146.83f, 300), pause(100),
+            tone(174.61f, 174.61f, 220), pause(70),
+            tone(130.81f, 130.81f, 380), pause(160),
+            tone(146.83f, 146.83f, 220), pause(70),
+            tone(196, 196, 260), pause(90),
+            tone(130.81f, 130.81f, 520)
         };
         playSound(backend_, sound);
     }

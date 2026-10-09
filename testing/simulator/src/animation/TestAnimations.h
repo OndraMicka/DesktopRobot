@@ -2,8 +2,6 @@
 
 #include "Animation.h"
 
-#include "../sound/SoundPlayer.h"
-
 #include <array>
 #include <cstddef>
 
@@ -53,8 +51,6 @@ namespace desktoprobot
         TestAnimationId id;
         RobotState state;
         const char* label;
-        SoundEffect sound;
-        bool playsSound;
     };
 
     const std::array<AnimationTestDefinition, 27>& getAnimationTestDefinitions();

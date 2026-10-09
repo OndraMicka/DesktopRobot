@@ -11,7 +11,7 @@ add_executable(desktop_robot_simulator
     src/main.cpp
     src/Framebuffer.cpp
     src/SDLRenderer.cpp
-    src/UI.cpp
+    src/ui/UI.cpp
     src/animation/Animation.cpp
     src/animation/AnimationPlayer.cpp
     src/animation/TestAnimations.cpp

@@ -152,7 +152,7 @@ namespace desktoprobot
             return false;
         }
 
-        constexpr double amplitude = 0.24;
+        constexpr double amplitude = 0.18;
         const uint64_t fadeSamples = SAMPLE_RATE / 200;
 
         for (uint64_t i = 0; i < sampleCount; ++i)
@@ -182,9 +182,11 @@ namespace desktoprobot
                 );
             }
 
-            const double tremolo = 1.0 + 0.025 * std::sin(2.0 * PI * 12.0 * progress);
-            const double waveform = std::sin(phase_) + 0.12 * std::sin(2.0 * phase_);
-            const double value = amplitude * envelope * tremolo * waveform;
+            // Odd harmonics give the low tones a restrained electronic buzz.
+            const double waveform = std::sin(phase_)
+                + 0.25 * std::sin(3.0 * phase_)
+                + 0.10 * std::sin(5.0 * phase_);
+            const double value = amplitude * envelope * waveform;
             samples.push_back(static_cast<int16_t>(value * std::numeric_limits<int16_t>::max()));
         }
 

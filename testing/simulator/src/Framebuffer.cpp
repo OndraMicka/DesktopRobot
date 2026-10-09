@@ -86,16 +86,26 @@ namespace desktoprobot
             if (cornerRadius > 0 && row < cornerRadius)
             {
                 const int dy = cornerRadius - row - 1;
-                while (inset < cornerRadius && inset * inset + dy * dy <= radiusSquared)
+                while (inset < cornerRadius)
                 {
+                    const int dx = cornerRadius - inset;
+                    if (dx * dx + dy * dy <= radiusSquared)
+                    {
+                        break;
+                    }
                     ++inset;
                 }
             }
             else if (cornerRadius > 0 && row >= height - cornerRadius)
             {
                 const int dy = row - (height - cornerRadius);
-                while (inset < cornerRadius && inset * inset + dy * dy <= radiusSquared)
+                while (inset < cornerRadius)
                 {
+                    const int dx = cornerRadius - inset;
+                    if (dx * dx + dy * dy <= radiusSquared)
+                    {
+                        break;
+                    }
                     ++inset;
                 }
             }

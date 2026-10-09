@@ -6,17 +6,10 @@ namespace desktoprobot
 
     enum class SoundEffect
     {
-        Happy,
-        SuperHappy,
-        Cuddly,
         Angry,
-        Surprised,
-        Sleep,
-        Friendly,
-        WakeUp,
-        Hum,
-        Content,
-        Bored
+        Bored,
+        Yawn,
+        Hum
     };
 
     class SoundPlayer
@@ -25,17 +18,10 @@ namespace desktoprobot
         explicit SoundPlayer(AudioBackend& backend);
 
         void play(SoundEffect effect);
-        void playHappy();
-        void playSuperHappy();
-        void playCuddly();
         void playAngry();
-        void playSurprised();
-        void playSleep();
-        void playFriendly();
-        void playWakeUp();
-        void playHum();
-        void playContent();
         void playBored();
+        void playYawn();
+        void playHum();
 
     private:
         AudioBackend& backend_;

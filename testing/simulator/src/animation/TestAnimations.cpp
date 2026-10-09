@@ -1,4 +1,5 @@
-#include "TestAnimations.h"
+// CODEX TEST
+ #include "TestAnimations.h"
 
 #include <algorithm>
 #include <array>
@@ -8,24 +9,14 @@ namespace desktoprobot
 {
     namespace
     {
-        constexpr std::size_t MAX_FRAMES = 11;
-        constexpr std::size_t MAX_COMMANDS = 20;
+        constexpr std::size_t MAX_FRAMES = 33;
+        constexpr std::size_t MAX_COMMANDS = 32;
 
         enum class Mouth : uint8_t
         {
-            Flat,
+            None,
             Smile,
-            Frown,
-            Open,
-            Sleep
-        };
-
-        enum class Brow : uint8_t
-        {
-            Neutral,
-            Angry,
-            Worried,
-            Curious
+            Open
         };
 
         struct Pose
@@ -39,8 +30,9 @@ namespace desktoprobot
             int eyeTilt;
             int rightEyeHeightOffset;
             Mouth mouth;
-            Brow brow;
             int zOffset;
+            int eyeSpacing = 60;
+            int eyeArc = 0;
         };
 
         struct AnimationStorage
@@ -50,22 +42,33 @@ namespace desktoprobot
             Animation animation{};
         };
 
-        constexpr Pose neutral{ 0, 0, 36, 27, 0, 0, 0, 0, Mouth::Flat, Brow::Neutral, -1 };
-        constexpr Pose glanceLeft{ 0, 0, 36, 27, -7, 0, 0, 0, Mouth::Flat, Brow::Neutral, -1 };
-        constexpr Pose glanceRight{ 0, 0, 36, 27, 7, 0, 0, 0, Mouth::Flat, Brow::Neutral, -1 };
-        constexpr Pose glanceUp{ 0, -2, 36, 27, 0, -6, 0, 0, Mouth::Flat, Brow::Curious, -1 };
-        constexpr Pose halfLid{ 0, 5, 36, 18, 0, 0, 0, 0, Mouth::Flat, Brow::Neutral, -1 };
-        constexpr Pose tired{ 0, 7, 34, 14, 0, 1, 0, -2, Mouth::Flat, Brow::Worried, -1 };
-        constexpr Pose eyesClosed{ 0, 11, 36, 5, 0, 0, 0, 0, Mouth::Sleep, Brow::Neutral, -1 };
-        constexpr Pose eyesVeryClosed{ 0, 12, 36, 3, 0, 0, 0, 0, Mouth::Sleep, Brow::Neutral, -1 };
-        constexpr Pose happy{ 0, 1, 36, 23, 0, 2, -1, -1, Mouth::Smile, Brow::Neutral, -1 };
-        constexpr Pose sleepyHappy{ 0, 7, 34, 14, 0, 1, 0, -2, Mouth::Smile, Brow::Worried, -1 };
-        constexpr Pose yawn{ 0, 1, 34, 24, 0, 0, 0, 0, Mouth::Open, Brow::Worried, -1 };
-        constexpr Pose surprised{ 0, -1, 37, 31, 0, -1, 0, 0, Mouth::Open, Brow::Curious, -1 };
-        constexpr Pose angry{ 0, 2, 36, 23, 0, 1, -4, 4, Mouth::Frown, Brow::Angry, -1 };
-        constexpr Pose bored{ 0, 7, 35, 16, 5, 0, 2, -1, Mouth::Frown, Brow::Worried, -1 };
-        constexpr Pose zSmall{ 0, 11, 36, 5, 0, 0, 0, 0, Mouth::Sleep, Brow::Neutral, 12 };
-        constexpr Pose zHigh{ 0, 11, 36, 5, 0, 0, 0, 0, Mouth::Sleep, Brow::Neutral, 1 };
+        // One OLED character: large solid eyes, fixed spacing and a bold, simple mouth.
+        // Gaze moves the whole eye; negative eyeArc makes a happy closed-eye arch.
+        constexpr Pose neutral{ 0, 0, 32, 28, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose glanceLeft{ 0, 0, 32, 28, -7, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose glanceRight{ 0, 0, 32, 28, 7, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose glanceUp{ 0, 0, 32, 28, 0, -6, 0, 0, Mouth::None, -1 };
+        constexpr Pose thinking{ 0, 0, 32, 16, 5, -4, 0, 0, Mouth::None, -1 };
+        constexpr Pose halfLid{ 0, 0, 32, 14, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose tired{ 0, 0, 32, 12, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose almostClosed{ 0, 0, 32, 5, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose eyesClosed{ 0, 0, 32, 3, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose eyesVeryClosed{ 0, 0, 32, 2, 0, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose happy{ 0, 0, 32, 4, 0, 0, 0, 0, Mouth::Smile, -1, 60, -4 };
+        constexpr Pose sleepyHappy{ 0, 0, 32, 4, 0, 0, 0, 0, Mouth::Smile, -1, 60, -2 };
+        constexpr Pose yawn{ 0, 0, 32, 9, 0, 0, 0, 0, Mouth::Open, -1 };
+        constexpr Pose surprised{ 0, 0, 32, 32, 0, 0, 0, 0, Mouth::Open, -1 };
+        constexpr Pose angry{ 0, 0, 32, 16, 0, 0, 3, 0, Mouth::None, -1 };
+        constexpr Pose bored{ 0, 0, 32, 10, 4, 0, 0, 0, Mouth::None, -1 };
+        constexpr Pose zSmall{ 0, 0, 32, 3, 0, 0, 0, 0, Mouth::None, 12 };
+        constexpr Pose zHigh{ 0, 0, 32, 3, 0, 0, 0, 0, Mouth::None, 1 };
+
+        constexpr Pose shifted(Pose pose, int x, int y)
+        {
+            pose.eyeOffsetX += x;
+            pose.eyeOffsetY += y;
+            return pose;
+        }
 
         constexpr int clamp(int value, int low, int high)
         {
@@ -82,6 +85,9 @@ namespace desktoprobot
 
         Pose interpolatePose(const Pose& start, const Pose& end, int step, int steps)
         {
+            // Ease in and out instead of moving at a constant, mechanical speed.
+            step = step * step * (3 * steps - 2 * step);
+            steps = steps * steps * steps;
             return {
                 interpolate(start.eyeOffsetX, end.eyeOffsetX, step, steps),
                 interpolate(start.eyeOffsetY, end.eyeOffsetY, step, steps),
@@ -92,10 +98,11 @@ namespace desktoprobot
                 interpolate(start.eyeTilt, end.eyeTilt, step, steps),
                 interpolate(start.rightEyeHeightOffset, end.rightEyeHeightOffset, step, steps),
                 step * 2 >= steps ? end.mouth : start.mouth,
-                step * 2 >= steps ? end.brow : start.brow,
                 start.zOffset < 0 || end.zOffset < 0
                     ? -1
-                    : interpolate(start.zOffset, end.zOffset, step, steps)
+                    : interpolate(start.zOffset, end.zOffset, step, steps),
+                interpolate(start.eyeSpacing, end.eyeSpacing, step, steps),
+                interpolate(start.eyeArc, end.eyeArc, step, steps)
             };
         }
 
@@ -107,6 +114,28 @@ namespace desktoprobot
             }
         }
 
+        void drawSoftArc(
+            std::array<DrawCommand, MAX_COMMANDS>& commands,
+            std::size_t& count,
+            int x,
+            int y,
+            int width,
+            int bend,
+            int radius
+        )
+        {
+            // Overlapping filled circles form a thick curve with round ends.
+            constexpr int STEPS = 8;
+            const int span = width - 1 - 2 * radius;
+            for (int step = 0; step <= STEPS; ++step)
+            {
+                const int curveY = interpolate(0, bend, 4 * step * (STEPS - step), STEPS * STEPS);
+                append(commands, count, circle(
+                    x + radius + interpolate(0, span, step, STEPS), y + curveY, radius, true
+                ));
+            }
+        }
+
         void drawEye(
             std::array<DrawCommand, MAX_COMMANDS>& commands,
             std::size_t& count,
@@ -114,42 +143,32 @@ namespace desktoprobot
             int centerY,
             int width,
             int height,
-            int gazeX,
-            int gazeY,
-            int tilt
+            int tilt,
+            int eyeArc
         )
         {
             const int x = centerX - width / 2;
             const int y = centerY - height / 2;
-            const int cornerRadius = std::min(height / 2, std::max(2, width / 5));
-            append(commands, count, roundedRectangle(x, y, width, height, cornerRadius));
-
-            if (height >= 13)
+            if (height <= 5)
             {
-                const int pupilWidth = std::max(5, width / 5);
-                const int pupilHeight = std::min(height - 6, std::max(7, height / 2));
-                const int pupilX = x + width / 2 - pupilWidth / 2 + gazeX;
-                const int pupilY = y + height / 2 - pupilHeight / 2 + gazeY;
-                append(commands, count, roundedRectangle(
-                    pupilX,
-                    pupilY,
-                    pupilWidth,
-                    pupilHeight,
-                    std::min(pupilWidth / 2, pupilHeight / 3),
-                    false
-                ));
+                const int bend = eyeArc != 0 ? eyeArc : (height <= 2 ? 0 : 2);
+                drawSoftArc(commands, count, x, centerY, width, bend, 2);
+                return;
             }
+
+            const int cornerRadius = std::min(width, height) / 2;
+            append(commands, count, roundedRectangle(x, y, width, height, cornerRadius));
 
             if (tilt != 0)
             {
-                const int inset = std::min(5, width / 5);
-                append(commands, count, line(
-                    x + inset,
-                    y + height / 3 + tilt,
-                    x + width - inset,
-                    y + height / 3 - tilt,
-                    false
-                ));
+                // Only anger needs a brow: one short inward-sloping stroke per eye.
+                const int slope = clamp(tilt, -3, 3);
+                for (int row = 0; row < 3; ++row)
+                {
+                    append(commands, count, line(
+                        x, y - 6 - slope + row, x + width - 1, y - 6 + slope + row
+                    ));
+                }
             }
         }
 
@@ -157,84 +176,65 @@ namespace desktoprobot
             std::array<DrawCommand, MAX_COMMANDS>& commands,
             std::size_t& count,
             Mouth mouth,
-            Brow brow
+            int offsetX,
+            int offsetY
         )
         {
+            const std::size_t firstCommand = count;
             switch (mouth)
             {
-            case Mouth::Flat:
-                append(commands, count, roundedRectangle(53, 49, 22, 3, 1));
+            case Mouth::None:
+                append(commands, count, roundedRectangle(54, 49, 20, 5, 2));
                 break;
             case Mouth::Smile:
-                append(commands, count, line(49, 46, 56, 51));
-                append(commands, count, line(56, 51, 64, 53));
-                append(commands, count, line(64, 53, 72, 51));
-                append(commands, count, line(72, 51, 79, 46));
-                break;
-            case Mouth::Frown:
-                append(commands, count, line(50, 53, 57, 48));
-                append(commands, count, line(57, 48, 64, 47));
-                append(commands, count, line(64, 47, 71, 48));
-                append(commands, count, line(71, 48, 78, 53));
+                drawSoftArc(commands, count, 49, 47, 31, 6, 3);
                 break;
             case Mouth::Open:
-                append(commands, count, circle(64, 50, 5, true));
-                break;
-            case Mouth::Sleep:
-                append(commands, count, line(57, 50, 71, 50));
+                append(commands, count, roundedRectangle(57, 43, 14, 17, 7));
                 break;
             }
-
-            if (brow == Brow::Angry)
+            for (std::size_t index = firstCommand; index < count; ++index)
             {
-                append(commands, count, line(12, 12, 42, 19));
-                append(commands, count, line(86, 19, 116, 12));
-            }
-            else if (brow == Brow::Worried)
-            {
-                append(commands, count, line(12, 13, 42, 10));
-                append(commands, count, line(86, 10, 116, 13));
-            }
-            else if (brow == Brow::Curious)
-            {
-                append(commands, count, line(14, 10, 40, 10));
-                append(commands, count, line(88, 9, 114, 12));
+                commands[index].x1 += offsetX;
+                commands[index].y1 += offsetY;
             }
         }
 
         void drawPose(std::array<DrawCommand, MAX_COMMANDS>& commands, std::size_t& count, const Pose& pose)
         {
-            const int eyeCenterY = 27 + pose.eyeOffsetY;
-            const int leftCenterX = 35 + pose.eyeOffsetX;
-            const int rightCenterX = 93 + pose.eyeOffsetX;
+            const int eyeCenterY = 25 + pose.eyeOffsetY + pose.gazeY;
+            const int leftCenterX = 64 - pose.eyeSpacing / 2 + pose.eyeOffsetX + pose.gazeX;
+            const int rightCenterX = 64 + pose.eyeSpacing / 2 + pose.eyeOffsetX + pose.gazeX;
             drawEye(
                 commands, count, leftCenterX, eyeCenterY,
-                pose.eyeWidth, pose.eyeHeight, pose.gazeX, pose.gazeY, pose.eyeTilt
+                pose.eyeWidth, pose.eyeHeight, pose.eyeTilt, pose.eyeArc
             );
             drawEye(
                 commands, count, rightCenterX, eyeCenterY,
                 pose.eyeWidth,
-                clamp(pose.eyeHeight + pose.rightEyeHeightOffset, 3, 33),
-                pose.gazeX,
-                pose.gazeY,
-                -pose.eyeTilt
+                clamp(pose.eyeHeight + pose.rightEyeHeightOffset, 2, 36),
+                -pose.eyeTilt,
+                pose.eyeArc
             );
-            drawMouth(commands, count, pose.mouth, pose.brow);
+            drawMouth(commands, count, pose.mouth, pose.eyeOffsetX, pose.eyeOffsetY);
 
             if (pose.zOffset >= 0)
             {
-                const int x = 98;
+                const int x = 113;
                 const int y = pose.zOffset;
-                append(commands, count, line(x, y, x + 8, y));
-                append(commands, count, line(x + 8, y, x, y + 8));
-                append(commands, count, line(x, y + 8, x + 8, y + 8));
+                append(commands, count, roundedRectangle(x, y, 11, 3, 1));
+                for (int row = 0; row < 3; ++row)
+                {
+                    append(commands, count, line(x + 10, y + row, x, y + 10 + row));
+                }
+                append(commands, count, roundedRectangle(x, y + 10, 11, 3, 1));
             }
         }
 
         AnimationStorage createAnimation(
             const char* name,
-            const std::array<Pose, 3>& poses,
-            const std::array<uint32_t, 3>& durations,
+            const std::array<Pose, 5>& poses,
+            const std::array<uint32_t, 5>& durations,
             std::size_t poseCount = 3,
             bool loop = false
         )
@@ -252,7 +252,7 @@ namespace desktoprobot
             }
             else
             {
-                constexpr int MORPH_STEPS = 5;
+                constexpr int MORPH_STEPS = 8;
                 for (std::size_t segment = 0; segment + 1 < poseCount; ++segment)
                 {
                     for (int step = 0; step < MORPH_STEPS; ++step)
@@ -265,8 +265,10 @@ namespace desktoprobot
                         );
                         std::size_t commandCount = 0;
                         drawPose(result.commands[frameCount], commandCount, pose);
+                        // Pause on the expression, then move through the next gesture.
+                        const uint32_t holdMs = durations[segment] / 3;
                         result.frames[frameCount] = {
-                            std::max(1U, durations[segment] / MORPH_STEPS),
+                            std::max(1U, step == 0 ? holdMs : (durations[segment] - holdMs) / (MORPH_STEPS - 1)),
                             result.commands[frameCount].data(),
                             commandCount
                         };
@@ -303,82 +305,87 @@ namespace desktoprobot
             const auto add = [&result](
                 TestAnimationId id,
                 const char* name,
-                const std::array<Pose, 3>& poses,
-                const std::array<uint32_t, 3>& durations,
+                const std::array<Pose, 5>& poses,
+                const std::array<uint32_t, 5>& durations,
                 std::size_t poseCount = 3)
             {
                 auto& animation = result[static_cast<std::size_t>(id)];
-                animation = createAnimation(name, poses, durations, poseCount);
+                auto longerDurations = durations;
+                for (std::size_t index = 0; index < poseCount; ++index)
+                {
+                    longerDurations[index] += durations[index] / 2;
+                }
+                animation = createAnimation(name, poses, longerDurations, poseCount);
                 rebindAnimationStorage(animation);
             };
 
-            add(TestAnimationId::Blink, "BLINK", { neutral, eyesClosed, neutral }, { 260, 240, 100 });
-            add(TestAnimationId::LookLeft, "LOOK LEFT", { neutral, glanceLeft, neutral }, { 320, 520, 260 });
-            add(TestAnimationId::LookRight, "LOOK RIGHT", { neutral, glanceRight, neutral }, { 320, 520, 260 });
-            add(TestAnimationId::LookUp, "LOOK UP", { neutral, glanceUp, neutral }, { 320, 620, 280 });
-            add(TestAnimationId::LookAround, "LOOK AROUND", { glanceLeft, glanceRight, neutral }, { 360, 360, 260 });
-            add(TestAnimationId::Thinking, "THINKING", { neutral, glanceUp, halfLid }, { 340, 750, 300 });
-            add(TestAnimationId::IdleYawn, "YAWN", { neutral, yawn, neutral }, { 500, 700, 460 });
-            add(TestAnimationId::Surprised, "SURPRISED", { neutral, surprised, glanceLeft }, { 320, 650, 420 });
-            add(TestAnimationId::Angry, "ANGRY", { neutral, angry, neutral }, { 300, 700, 420 });
-            add(TestAnimationId::Content, "CONTENTED", { neutral, happy, eyesClosed }, { 440, 650, 450 });
-            add(TestAnimationId::Bored, "BORED", { neutral, bored, bored }, { 420, 1000, 200 });
-            add(TestAnimationId::SelfSatisfied, "SELF SATISFIED", { neutral, happy, sleepyHappy }, { 400, 750, 400 });
+            add(TestAnimationId::Blink, "BLINK", { neutral, eyesClosed, neutral, eyesClosed, neutral }, { 140, 90, 220, 90, 180 }, 5);
+            add(TestAnimationId::LookLeft, "LOOK LEFT", { neutral, glanceLeft, shifted(glanceLeft, -2, 1), glanceLeft, neutral }, { 240, 420, 300, 220, 240 }, 5);
+            add(TestAnimationId::LookRight, "LOOK RIGHT", { neutral, glanceRight, shifted(glanceRight, 2, 1), glanceRight, neutral }, { 240, 420, 300, 220, 240 }, 5);
+            add(TestAnimationId::LookUp, "LOOK UP", { neutral, glanceUp, shifted(glanceUp, 0, 2), glanceUp, neutral }, { 240, 440, 260, 220, 260 }, 5);
+            add(TestAnimationId::LookAround, "LOOK AROUND", { neutral, glanceLeft, glanceUp, glanceRight, neutral }, { 220, 420, 320, 420, 240 }, 5);
+            add(TestAnimationId::Thinking, "THINKING", { neutral, thinking, shifted(thinking, -2, 2), thinking, neutral }, { 280, 600, 420, 500, 260 }, 5);
+            add(TestAnimationId::IdleYawn, "YAWN", { neutral, halfLid, shifted(yawn, 0, -2), sleepyHappy, neutral }, { 260, 360, 720, 440, 280 }, 5);
+            add(TestAnimationId::Surprised, "SURPRISED", { neutral, shifted(surprised, 0, -2), surprised, glanceLeft, neutral }, { 140, 320, 540, 360, 220 }, 5);
+            add(TestAnimationId::Angry, "ANGRY", { neutral, shifted(angry, -2, 0), shifted(angry, 2, 0), angry, neutral }, { 220, 280, 280, 600, 260 }, 5);
+            add(TestAnimationId::Content, "CONTENTED", { neutral, happy, shifted(happy, 0, -2), sleepyHappy, neutral }, { 260, 400, 420, 500, 280 }, 5);
+            add(TestAnimationId::Bored, "BORED", { neutral, bored, shifted(bored, 0, 2), bored, neutral }, { 320, 700, 500, 440, 260 }, 5);
+            add(TestAnimationId::SelfSatisfied, "SELF SATISFIED", { neutral, happy, shifted(sleepyHappy, 2, -1), sleepyHappy, neutral }, { 260, 480, 420, 520, 280 }, 5);
             add(TestAnimationId::IdleAlmostAsleep, "ALMOST ASLEEP", { neutral, eyesClosed, surprised }, { 720, 620, 260 });
-            add(TestAnimationId::Listening, "LISTENING", { neutral, glanceRight, glanceRight }, { 320, 820, 240 });
-            add(TestAnimationId::RandomCuriosity, "RANDOM CURIOSITY", { glanceLeft, glanceRight, neutral }, { 250, 280, 240 });
-            add(TestAnimationId::CheckSurroundings, "CHECK SURROUNDINGS", { glanceLeft, glanceUp, glanceRight }, { 280, 300, 320 });
+            add(TestAnimationId::Listening, "LISTENING", { neutral, glanceRight, shifted(glanceRight, 0, -2), glanceRight, neutral }, { 260, 500, 400, 500, 260 }, 5);
+            add(TestAnimationId::RandomCuriosity, "RANDOM CURIOSITY", { neutral, glanceLeft, glanceUp, glanceRight, neutral }, { 200, 260, 300, 280, 220 }, 5);
+            add(TestAnimationId::CheckSurroundings, "CHECK SURROUNDINGS", { neutral, glanceLeft, glanceUp, glanceRight, neutral }, { 240, 480, 420, 480, 260 }, 5);
             add(TestAnimationId::BriefFreeze, "BRIEF FREEZE", { neutral, neutral, neutral }, { 320, 1200, 220 });
-            add(TestAnimationId::Hum, "HUM", { neutral, happy, happy }, { 360, 620, 320 });
-            add(TestAnimationId::Smile, "SMILE", { neutral, happy, neutral }, { 360, 800, 420 });
-            add(TestAnimationId::TiredYawn, "YAWN", { tired, yawn, sleepyHappy }, { 480, 760, 520 });
+            add(TestAnimationId::Hum, "HUM", { neutral, shifted(happy, -2, -1), shifted(happy, 2, 0), happy, neutral }, { 260, 360, 360, 420, 260 }, 5);
+            add(TestAnimationId::Smile, "SMILE", { neutral, happy, shifted(happy, 0, -2), happy, neutral }, { 260, 420, 400, 500, 280 }, 5);
+            add(TestAnimationId::TiredYawn, "YAWN", { tired, almostClosed, shifted(yawn, 0, -1), sleepyHappy, tired }, { 400, 440, 850, 550, 420 }, 5);
             add(TestAnimationId::SlowBlink, "SLOW BLINK", { tired, eyesClosed, tired }, { 820, 720, 650 });
-            add(TestAnimationId::HalfClosedEyes, "HALF CLOSED EYES", { tired, sleepyHappy, tired }, { 500, 700, 460 });
+            add(TestAnimationId::HalfClosedEyes, "HALF CLOSED EYES", { tired, almostClosed, tired }, { 500, 700, 460 });
             add(TestAnimationId::SlowEyeMovement, "SLOW EYE MOVEMENT", {
-                Pose{ 0, 7, 34, 14, -6, 0, 0, -2, Mouth::Flat, Brow::Worried, -1 },
-                Pose{ 0, 7, 34, 14, 6, 0, 0, -2, Mouth::Flat, Brow::Worried, -1 },
+                Pose{ 0, 0, 32, 12, -7, 0, 0, 0, Mouth::None, -1 },
+                Pose{ 0, 0, 32, 12, 7, 0, 0, 0, Mouth::None, -1 },
                 tired
             }, { 900, 900, 700 });
             add(TestAnimationId::TiredAlmostAsleep, "ALMOST ASLEEP", { tired, eyesVeryClosed, tired }, { 900, 850, 380 });
-            add(TestAnimationId::SleepEyeOpen, "SLEEP EYE OPEN", { eyesClosed, halfLid, eyesClosed }, { 420, 740, 520 });
+            add(TestAnimationId::SleepEyeOpen, "SLEEP EYE OPEN", { eyesClosed, eyesVeryClosed, eyesClosed }, { 420, 740, 520 });
             add(TestAnimationId::SleepZ, "ZZZ", { zSmall, zHigh, zSmall }, { 720, 850, 720 });
-            add(TestAnimationId::WakeUp, "WAKE UP", { eyesClosed, halfLid, glanceUp }, { 700, 620, 500 });
+            add(TestAnimationId::WakeUp, "WAKE UP", { eyesClosed, halfLid, eyesClosed, halfLid, neutral }, { 500, 380, 260, 600, 400 }, 5);
 
         }
 
         const std::array<AnimationTestDefinition, 27> animationTests = {{
-            { TestAnimationId::Blink, RobotState::Idle, "BLINK", SoundEffect::Happy, false },
-            { TestAnimationId::LookLeft, RobotState::Idle, "LOOK LEFT", SoundEffect::Happy, false },
-            { TestAnimationId::LookRight, RobotState::Idle, "LOOK RIGHT", SoundEffect::Happy, false },
-            { TestAnimationId::LookUp, RobotState::Idle, "LOOK UP", SoundEffect::Happy, false },
-            { TestAnimationId::LookAround, RobotState::Idle, "LOOK AROUND", SoundEffect::Happy, false },
-            { TestAnimationId::Thinking, RobotState::Idle, "THINKING", SoundEffect::Happy, false },
-            { TestAnimationId::IdleYawn, RobotState::Idle, "YAWN", SoundEffect::Happy, false },
-            { TestAnimationId::Surprised, RobotState::Idle, "SURPRISED", SoundEffect::Surprised, true },
-            { TestAnimationId::Angry, RobotState::Idle, "ANGRY", SoundEffect::Angry, true },
-            { TestAnimationId::Content, RobotState::Idle, "CONTENTED", SoundEffect::Content, true },
-            { TestAnimationId::Bored, RobotState::Idle, "BORED", SoundEffect::Bored, true },
-            { TestAnimationId::SelfSatisfied, RobotState::Idle, "SELF SATISFIED", SoundEffect::Content, true },
-            { TestAnimationId::IdleAlmostAsleep, RobotState::Idle, "ALMOST ASLEEP", SoundEffect::Happy, false },
-            { TestAnimationId::Listening, RobotState::Idle, "LISTENING", SoundEffect::Happy, false },
-            { TestAnimationId::RandomCuriosity, RobotState::Idle, "RANDOM CURIOSITY", SoundEffect::Happy, false },
-            { TestAnimationId::CheckSurroundings, RobotState::Idle, "CHECK SURROUNDINGS", SoundEffect::Happy, false },
-            { TestAnimationId::BriefFreeze, RobotState::Idle, "BRIEF FREEZE", SoundEffect::Happy, false },
-            { TestAnimationId::Hum, RobotState::Idle, "HUM", SoundEffect::Hum, true },
-            { TestAnimationId::Smile, RobotState::Idle, "SMILE", SoundEffect::Happy, true },
-            { TestAnimationId::TiredYawn, RobotState::Tired, "YAWN", SoundEffect::Happy, false },
-            { TestAnimationId::SlowBlink, RobotState::Tired, "SLOW BLINK", SoundEffect::Happy, false },
-            { TestAnimationId::HalfClosedEyes, RobotState::Tired, "HALF CLOSED EYES", SoundEffect::Happy, false },
-            { TestAnimationId::SlowEyeMovement, RobotState::Tired, "SLOW EYE MOVEMENT", SoundEffect::Happy, false },
-            { TestAnimationId::TiredAlmostAsleep, RobotState::Tired, "ALMOST ASLEEP", SoundEffect::Happy, false },
-            { TestAnimationId::SleepEyeOpen, RobotState::Sleep, "SLEEP EYE OPEN", SoundEffect::Surprised, true },
-            { TestAnimationId::SleepZ, RobotState::Sleep, "ZZZ", SoundEffect::Happy, false },
-            { TestAnimationId::WakeUp, RobotState::Sleep, "WAKE UP", SoundEffect::WakeUp, true }
+            { TestAnimationId::Blink, RobotState::Idle, "BLINK" },
+            { TestAnimationId::LookLeft, RobotState::Idle, "LOOK LEFT" },
+            { TestAnimationId::LookRight, RobotState::Idle, "LOOK RIGHT" },
+            { TestAnimationId::LookUp, RobotState::Idle, "LOOK UP" },
+            { TestAnimationId::LookAround, RobotState::Idle, "LOOK AROUND" },
+            { TestAnimationId::Thinking, RobotState::Idle, "THINKING" },
+            { TestAnimationId::IdleYawn, RobotState::Idle, "YAWN" },
+            { TestAnimationId::Surprised, RobotState::Idle, "SURPRISED" },
+            { TestAnimationId::Angry, RobotState::Idle, "ANGRY" },
+            { TestAnimationId::Content, RobotState::Idle, "CONTENTED" },
+            { TestAnimationId::Bored, RobotState::Idle, "BORED" },
+            { TestAnimationId::SelfSatisfied, RobotState::Idle, "SELF SATISFIED" },
+            { TestAnimationId::IdleAlmostAsleep, RobotState::Idle, "ALMOST ASLEEP" },
+            { TestAnimationId::Listening, RobotState::Idle, "LISTENING" },
+            { TestAnimationId::RandomCuriosity, RobotState::Idle, "RANDOM CURIOSITY" },
+            { TestAnimationId::CheckSurroundings, RobotState::Idle, "CHECK SURROUNDINGS" },
+            { TestAnimationId::BriefFreeze, RobotState::Idle, "BRIEF FREEZE" },
+            { TestAnimationId::Hum, RobotState::Idle, "HUM" },
+            { TestAnimationId::Smile, RobotState::Idle, "SMILE" },
+            { TestAnimationId::TiredYawn, RobotState::Tired, "YAWN" },
+            { TestAnimationId::SlowBlink, RobotState::Tired, "SLOW BLINK" },
+            { TestAnimationId::HalfClosedEyes, RobotState::Tired, "HALF CLOSED EYES" },
+            { TestAnimationId::SlowEyeMovement, RobotState::Tired, "SLOW EYE MOVEMENT" },
+            { TestAnimationId::TiredAlmostAsleep, RobotState::Tired, "ALMOST ASLEEP" },
+            { TestAnimationId::SleepEyeOpen, RobotState::Sleep, "SLEEP EYE OPEN" },
+            { TestAnimationId::SleepZ, RobotState::Sleep, "ZZZ" },
+            { TestAnimationId::WakeUp, RobotState::Sleep, "WAKE UP" }
         }};
 
         AnimationStorage createStateAnimation(const char* name, const Pose& pose)
         {
-            AnimationStorage result = createAnimation(name, { pose, pose, pose }, { 900, 900, 900 }, 3, true);
+            AnimationStorage result = createAnimation(name, { pose, shifted(pose, 0, -1), pose }, { 1200, 1200, 500 }, 3, true);
             rebindAnimationStorage(result);
             return result;
         }
