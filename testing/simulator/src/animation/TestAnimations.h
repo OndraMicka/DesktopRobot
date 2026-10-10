@@ -25,21 +25,13 @@ namespace desktoprobot
         IdleYawn,
         Surprised,
         Angry,
-        Content,
+        Smile,
         Bored,
-        SelfSatisfied,
-        IdleAlmostAsleep,
         Listening,
         RandomCuriosity,
-        CheckSurroundings,
-        BriefFreeze,
-        Hum,
-        Smile,
         TiredYawn,
         SlowBlink,
-        HalfClosedEyes,
         SlowEyeMovement,
-        TiredAlmostAsleep,
         SleepEyeOpen,
         SleepZ,
         WakeUp,
@@ -53,7 +45,7 @@ namespace desktoprobot
         const char* label;
     };
 
-    const std::array<AnimationTestDefinition, 27>& getAnimationTestDefinitions();
+    const std::array<AnimationTestDefinition, static_cast<std::size_t>(TestAnimationId::Count)>& getAnimationTestDefinitions();
     const Animation& getTestAnimation(TestAnimationId id);
     const Animation& getStateAnimation(RobotState state);
     const char* getStateName(RobotState state);
