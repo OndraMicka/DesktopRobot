@@ -17,9 +17,11 @@ namespace desktoprobot
 
         bool initialize();
         void shutdown();
-        bool play(const SoundDefinition& sound, std::string& error) override;
+        bool play(const SoundDefinition& sound, std::string& error, bool loop = false) override;
+        void stop() override;
 
     private:
+        static void audioCallback(void* userdata, Uint8* stream, int length);
         bool generateTone(
             std::vector<int16_t>& samples,
             float startFrequencyHz,
@@ -29,5 +31,8 @@ namespace desktoprobot
 
         SDL_AudioDeviceID device_ = 0;
         double phase_ = 0.0;
+        std::vector<int16_t> samples_;
+        std::size_t sampleIndex_ = 0;
+        bool loop_ = false;
     };
 }

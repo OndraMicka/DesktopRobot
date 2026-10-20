@@ -41,6 +41,8 @@ namespace desktoprobot
         desired.format = AUDIO_S16SYS;
         desired.channels = 1;
         desired.samples = 1024;
+        desired.callback = audioCallback;
+        desired.userdata = this;
 
         device_ = SDL_OpenAudioDevice(nullptr, 0, &desired, nullptr, 0);
         if (device_ == 0)
@@ -63,7 +65,38 @@ namespace desktoprobot
         }
     }
 
-    bool SDLAudioBackend::play(const SoundDefinition& sound, std::string& error)
+    void SDLAudioBackend::audioCallback(void* userdata, Uint8* stream, int length)
+    {
+        auto& self = *static_cast<SDLAudioBackend*>(userdata);
+        auto* output = reinterpret_cast<int16_t*>(stream);
+        const std::size_t count = static_cast<std::size_t>(length) / sizeof(int16_t);
+        std::fill(output, output + count, 0);
+        std::size_t written = 0;
+        while (written < count && !self.samples_.empty())
+        {
+            if (self.sampleIndex_ == self.samples_.size())
+            {
+                if (!self.loop_) break;
+                self.sampleIndex_ = 0;
+            }
+            const std::size_t chunk = std::min(count - written, self.samples_.size() - self.sampleIndex_);
+            std::copy_n(self.samples_.data() + self.sampleIndex_, chunk, output + written);
+            self.sampleIndex_ += chunk;
+            written += chunk;
+        }
+    }
+
+    void SDLAudioBackend::stop()
+    {
+        if (device_ == 0) return;
+        SDL_LockAudioDevice(device_);
+        samples_.clear();
+        sampleIndex_ = 0;
+        loop_ = false;
+        SDL_UnlockAudioDevice(device_);
+    }
+
+    bool SDLAudioBackend::play(const SoundDefinition& sound, std::string& error, bool loop)
     {
         if (device_ == 0)
         {
@@ -120,21 +153,11 @@ namespace desktoprobot
             }
         }
 
-        if (samples.empty())
-        {
-            return true;
-        }
-
-        SDL_ClearQueuedAudio(device_);
-        if (SDL_QueueAudio(
-                device_,
-                samples.data(),
-                static_cast<Uint32>(samples.size() * sizeof(int16_t))
-            ) != 0)
-        {
-            error = std::string("SDL failed to queue audio: ") + SDL_GetError();
-            return false;
-        }
+        SDL_LockAudioDevice(device_);
+        samples_.swap(samples);
+        sampleIndex_ = 0;
+        loop_ = loop;
+        SDL_UnlockAudioDevice(device_);
 
         return true;
     }

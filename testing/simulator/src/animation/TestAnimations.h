@@ -23,7 +23,8 @@ namespace desktoprobot
         LookAround,
         Thinking,
         IdleYawn,
-        Surprised,
+        Shaking,
+        Dizzy,
         Angry,
         Smile,
         Bored,
@@ -35,6 +36,11 @@ namespace desktoprobot
         SleepEyeOpen,
         SleepZ,
         WakeUp,
+        TiredToSleep,
+        IdleToTired,
+        IdleToSleep,
+        TiredToIdle,
+        SleepToTired,
         Count
     };
 
@@ -43,10 +49,14 @@ namespace desktoprobot
         TestAnimationId id;
         RobotState state;
         const char* label;
+        bool transition = false;
+        RobotState targetState = RobotState::Idle;
     };
 
     const std::array<AnimationTestDefinition, static_cast<std::size_t>(TestAnimationId::Count)>& getAnimationTestDefinitions();
     const Animation& getTestAnimation(TestAnimationId id);
+    const Animation& getShakeRecoveryAnimation(const Frame& releaseFrame);
+    const AnimationTestDefinition* getStateTransition(RobotState from, RobotState to);
     const Animation& getStateAnimation(RobotState state);
     const char* getStateName(RobotState state);
 }

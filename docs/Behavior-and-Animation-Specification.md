@@ -182,15 +182,6 @@ This should be less frequent than yawning in TIRED.
 3. Optionally animate the mouth or eyes in rhythm.
 4. Return to normal.
 
-#### E. Momentary Surprise
-
-1. Widen the eyes.
-2. Hold the surprised expression briefly.
-3. Look in one direction.
-4. Return to normal.
-
-This is a playful, self-initiated reaction, not a response to a physical touch.
-
 #### F. Contented Expression
 
 1. Close the eyes gently.
@@ -274,7 +265,6 @@ Example initial weights for IDLE:
 | Thinking              |             10 |
 | Casual yawn           |              8 |
 | Humming               |              7 |
-| Momentary surprise    |              5 |
 | Contented expression  |              5 |
 | Checking surroundings |              5 |
 | Bored expression      |              5 |
@@ -412,7 +402,7 @@ The reaction should be playful rather than aggressive.
 
 Sequence:
 
-1. Show a surprised expression.
+1. Briefly open the eyes before the irritated expression.
 2. Transition to an angry or irritated expression.
 3. Play a short, annoyed buzzer sound.
 4. Enter IDLE temporarily.
@@ -555,7 +545,6 @@ Temporary animations and reactions:
 * LOOK_UP
 * LOOK_AROUND
 * YAWN
-* SURPRISED
 * ANGRY
 * SMILE
 * WAKE_UP
@@ -660,7 +649,6 @@ Provide buttons grouped by function.
 
 * BLINK
 * YAWN
-* SURPRISED
 * ANGRY
 * WAKE_UP
 * LOOK_UP
@@ -730,8 +718,8 @@ The implementation should pass the following scenarios.
 ### Tap
 
 * TAP during IDLE causes an angry reaction and a short annoyed sound, then returns to IDLE.
-* TAP during TIRED causes surprise and anger, then temporarily enters IDLE before returning to TIRED and eventually SLEEP according to the specified timing.
-* TAP during SLEEP causes surprise and anger, then enters TIRED.
+* TAP during TIRED causes an irritated expression, then temporarily enters IDLE before returning to TIRED and eventually SLEEP according to the specified timing.
+* TAP during SLEEP causes an irritated expression, then enters TIRED.
 * A night-time wake-up before 07:00 remains TIRED until 07:00.
 
 ### Long Press
@@ -775,3 +763,54 @@ Implement the system in stages.
 10. Prepare the shared logic for integration with the physical ESP32-C3 hardware.
 
 **Final goal:** DesktopRobot should feel like a small, expressive companion with a daily routine, distinct moods, spontaneous behaviors, and meaningful reactions to touch, while remaining predictable enough to test and reliable enough to run on a microcontroller.
+
+
+## 17. Shake Reaction
+
+The MPU6050 input layer must expose `SHAKE_START` and `SHAKE_END` events.
+Use configurable detection thresholds and a quiet-time debounce before emitting
+`SHAKE_END`, so individual acceleration peaks do not restart the reaction.
+The sensor driver and threshold tuning remain firmware implementation work.
+
+* `SHAKE_START`: interrupt the current activity and loop `SHAKING` for as long
+  as shaking continues. Use narrowed, inward-sloping eyes and short restrained
+  side-to-side movements. Shape the eyes themselves; do not draw eyebrows.
+* `SHAKE_END`: stop the loop immediately and play `DIZZY` once, blending from
+  the exact displayed shake pose. The face circles and rolls with a lagging gaze,
+  then squeezes its eyes and shakes side to side while still dizzy. The circling
+  fades during this shake, which clears its head, before the eyes open into a
+  calm neutral expression.
+* A new `SHAKE_START` during `DIZZY` interrupts recovery and resumes `SHAKING`.
+* After recovery, return to the appropriate permanent state. Shaking does not
+  change the daily schedule.
+* Keep the same solid eyes and simple mouth as the existing expressions;
+  no hearts, stars, blush or decorative effects.
+
+Simulator: hold Space or the `SHAKE - HOLD` button for the first phase; release
+it to trigger recovery. `DIZZY` can also be previewed separately. The selected
+IDLE/TIRED/SLEEP state is preserved across both phases.
+
+`SURPRISED` has been removed from the animation catalogue. `ANGRY` is a restrained
+frown formed by the upper edges of the eyes, without eyebrows. `SMILE` holds
+its expression longer before returning to neutral.
+
+
+## 18. State Transition Previews
+
+All six directed transitions have dedicated, non-looping animations:
+
+| From | To | Animation |
+| --- | --- | --- |
+| IDLE | TIRED | IDLE TO TIRED: narrow eyes, yawn, settle into tired eyes |
+| IDLE | SLEEP | IDLE TO SLEEP: yawn, droop, close eyes and pause |
+| TIRED | IDLE | TIRED TO IDLE: blink, open eyes and look around |
+| TIRED | SLEEP | GO TO SLEEP: droop, briefly resist, close eyes |
+| SLEEP | IDLE | WAKE UP: existing gradual wake-up sequence |
+| SLEEP | TIRED | SLEEP TO TIRED: tentative opening, blink, sleepy gaze |
+
+In the simulator, SET STATE chooses the transition from the selected source
+state, plays it once and continues the target state's loop. Choosing the same
+state does nothing. Each transition also has its own preview button in its
+source state's panel; previews finish in the target state. The STATE indicator
+shows the destination as soon as a transition starts. A new selection can
+interrupt the transition and uses that destination as its source state.

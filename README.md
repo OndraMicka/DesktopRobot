@@ -46,25 +46,23 @@ desktop-robot/
 │   ├── simulator/       # PC simulator
 │   │   ├── src/
 │   │   │   ├── animation/
-│   │   │   └── sound/
-│   │   │       └── backends/pc/
+│   │   │   ├── sound/
+│   │   │   │   └── backends/pc/
+│   │   │   └── ui/
 │   │   └── CMakeLists.txt
-│   ├── buzzer_test/     # Standalone buzzer sound test
-│   └── CMakeLists.txt   # Builds all testing applications
+│   ├── testingFilmware/ # ESP32-C3 OLED and touch hardware test (PlatformIO)
+│   └── CMakeLists.txt   # Builds the PC simulator
 │
-├── esp32/              # ESP32 firmware
-│   ├── src/
-│   └── CMakeLists.txt
-│
-├── hardware/           # Hardware documentation and wiring
-│
-├── enclosure/          # 3D model of the case
+├── esp32/              # PlatformIO compatibility entry point for the hardware test
 │
 └── docs/               # Project documentation
 ```
 
 Build all PC testing applications with CMake using `testing/` as the source
-directory. Simulator sound descriptions are separate from the PC audio
+directory. Build the ESP32 hardware test with
+`pio run -d testing/testingFilmware -e esp32c3`; wiring and expected output are
+documented in [the hardware test guide](docs/DesktopRobot_hardware_test.md).
+Simulator sound descriptions are separate from the PC audio
 backend, allowing the sound behavior to be reused with ESP32 buzzer output.
 
 ## Development

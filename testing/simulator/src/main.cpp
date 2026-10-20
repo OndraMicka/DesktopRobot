@@ -60,11 +60,22 @@ namespace
         std::array<Panel, 4> panels;
     };
 
-    constexpr std::array<SoundTestDefinition, 4> SOUND_TESTS = {{
-        { desktoprobot::SoundEffect::Angry, "ANGRY" },
-        { desktoprobot::SoundEffect::Bored, "BORED" },
-        { desktoprobot::SoundEffect::Yawn, "YAWN" },
-        { desktoprobot::SoundEffect::Hum, "HUM THEME" }
+    constexpr std::array<SoundTestDefinition, 15> SOUND_TESTS = {{
+        { desktoprobot::SoundEffect::Shake1, "SHAKE 1 - HOLD" },
+        { desktoprobot::SoundEffect::Shake2, "SHAKE 2 - HOLD" },
+        { desktoprobot::SoundEffect::Shake3, "SHAKE 3 - HOLD" },
+        { desktoprobot::SoundEffect::Shake4, "SHAKE 4 - HOLD" },
+        { desktoprobot::SoundEffect::Shake5, "SHAKE 5 - HOLD" },
+        { desktoprobot::SoundEffect::Hold1, "HOLD 1" },
+        { desktoprobot::SoundEffect::Hold2, "HOLD 2" },
+        { desktoprobot::SoundEffect::Hold3, "HOLD 3" },
+        { desktoprobot::SoundEffect::Hold4, "HOLD 4" },
+        { desktoprobot::SoundEffect::Hold5, "HOLD 5" },
+        { desktoprobot::SoundEffect::Tap1, "TAP 1" },
+        { desktoprobot::SoundEffect::Tap2, "TAP 2" },
+        { desktoprobot::SoundEffect::Tap3, "TAP 3" },
+        { desktoprobot::SoundEffect::Tap4, "TAP 4" },
+        { desktoprobot::SoundEffect::Tap5, "TAP 5" }
     }};
 
     int getStateAnimationCount(desktoprobot::RobotState state)
@@ -128,7 +139,7 @@ namespace
         ControlType type,
         desktoprobot::RobotState state = desktoprobot::RobotState::Idle,
         desktoprobot::TestAnimationId animation = desktoprobot::TestAnimationId::Blink,
-        desktoprobot::SoundEffect sound = desktoprobot::SoundEffect::Angry
+        desktoprobot::SoundEffect sound = desktoprobot::SoundEffect::Shake1
     )
     {
         controls.push_back({
@@ -231,7 +242,8 @@ namespace
     void updateControlStates(
         std::vector<Control>& controls,
         desktoprobot::RobotState selectedState,
-        const desktoprobot::AnimationPlayer& player
+        const desktoprobot::AnimationPlayer& player,
+        const Control* loopingSound
     )
     {
         for (auto& control : controls)
@@ -247,7 +259,7 @@ namespace
             }
             else
             {
-                control.button.active = false;
+                control.button.active = &control == loopingSound;
             }
         }
     }
@@ -374,6 +386,33 @@ int main()
         layout.buttonGap
     );
 
+    bool shakeKeyHeld = false;
+    Control* loopingSound = nullptr;
+    const auto stopSoundLoop = [&]()
+    {
+        if (loopingSound == nullptr) return;
+        soundPlayer.stop();
+        loopingSound = nullptr;
+    };
+    bool shakeMouseHeld = false;
+    bool shaking = false;
+    const auto updateShaking = [&]()
+    {
+        const bool active = shakeKeyHeld || shakeMouseHeld;
+        if (active == shaking) return;
+        shaking = active;
+        if (shaking)
+        {
+            player.setLoopAnimation(desktoprobot::getTestAnimation(desktoprobot::TestAnimationId::Shaking));
+        }
+        else
+        {
+            const auto& recovery = desktoprobot::getShakeRecoveryAnimation(player.getCurrentFrame());
+            player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
+            player.playOneShot(recovery);
+        }
+    };
+
     uint32_t lastFrameTime = SDL_GetTicks();
     bool running = true;
     while (running)
@@ -389,21 +428,31 @@ int main()
             {
                 switch (event.key.keysym.sym)
                 {
-                case SDLK_h:
-                    soundPlayer.playHum();
-                    break;
-                case SDLK_b:
-                    soundPlayer.playBored();
-                    break;
-                case SDLK_y:
-                    soundPlayer.playYawn();
-                    break;
-                case SDLK_a:
-                    soundPlayer.playAngry();
+                case SDLK_SPACE:
+                    shakeKeyHeld = true;
+                    updateShaking();
                     break;
                 default:
                     break;
                 }
+            }
+            else if (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_SPACE)
+            {
+                shakeKeyHeld = false;
+                updateShaking();
+            }
+            else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT)
+            {
+                stopSoundLoop();
+                shakeMouseHeld = false;
+                updateShaking();
+            }
+            else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            {
+                stopSoundLoop();
+                shakeKeyHeld = false;
+                shakeMouseHeld = false;
+                updateShaking();
             }
             else if (event.type == SDL_MOUSEMOTION)
             {
@@ -418,35 +467,41 @@ int main()
                         continue;
                     }
 
+                    if (control.type == ControlType::Animation
+                        && control.animation == desktoprobot::TestAnimationId::Shaking)
+                    {
+                        shakeMouseHeld = true;
+                        updateShaking();
+                        break;
+                    }
+                    if (shaking && control.type != ControlType::Sound) break;
+
                     if (control.type == ControlType::State)
                     {
+                        const auto* transition = desktoprobot::getStateTransition(selectedState, control.state);
+                        if (selectedState == control.state) break;
                         selectedState = control.state;
                         player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
+                        if (transition != nullptr)
+                            player.playOneShot(desktoprobot::getTestAnimation(transition->id));
                     }
                     else if (control.type == ControlType::Animation)
                     {
                         selectedState = control.state;
+                        for (const auto& definition : desktoprobot::getAnimationTestDefinitions())
+                        {
+                            if (definition.id == control.animation && definition.transition)
+                                selectedState = definition.targetState;
+                        }
                         player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
                         player.playOneShot(desktoprobot::getTestAnimation(control.animation));
-                        switch (control.animation)
-                        {
-                        case desktoprobot::TestAnimationId::Angry:
-                            soundPlayer.playAngry();
-                            break;
-                        case desktoprobot::TestAnimationId::Bored:
-                            soundPlayer.playBored();
-                            break;
-                        case desktoprobot::TestAnimationId::IdleYawn:
-                        case desktoprobot::TestAnimationId::TiredYawn:
-                            soundPlayer.playYawn();
-                            break;
-                        default:
-                            break;
-                        }
                     }
                     else
                     {
-                        soundPlayer.play(control.sound);
+                        const bool loop = control.sound >= desktoprobot::SoundEffect::Shake1
+                            && control.sound <= desktoprobot::SoundEffect::Shake5;
+                        soundPlayer.play(control.sound, loop);
+                        loopingSound = loop ? &control : nullptr;
                     }
                     break;
                 }
@@ -458,7 +513,7 @@ int main()
         lastFrameTime = now;
         player.update(delta);
         player.renderCurrentFrame(framebuffer);
-        updateControlStates(controls, selectedState, player);
+        updateControlStates(controls, selectedState, player, loopingSound);
 
         SDL_SetRenderDrawColor(renderer, 10, 10, 12, 255);
         SDL_RenderClear(renderer);

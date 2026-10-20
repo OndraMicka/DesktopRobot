@@ -205,6 +205,7 @@ cython_debug/
 *.exe
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
+.tools/
 
 # Ruff stuff:
 .ruff_cache/
@@ -219,3 +220,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.pio/
