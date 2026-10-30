@@ -53,7 +53,7 @@ desktop-robot/
 │   ├── testingFilmware/ # ESP32-C3 OLED and touch hardware test (PlatformIO)
 │   └── CMakeLists.txt   # Builds the PC simulator
 │
-├── esp32/              # PlatformIO compatibility entry point for the hardware test
+├── esp32/              # Modular ESP32-C3 firmware (PlatformIO)
 │
 └── docs/               # Project documentation
 ```
@@ -62,6 +62,9 @@ Build all PC testing applications with CMake using `testing/` as the source
 directory. Build the ESP32 hardware test with
 `pio run -d testing/testingFilmware -e esp32c3`; wiring and expected output are
 documented in [the hardware test guide](docs/DesktopRobot_hardware_test.md).
+The modular firmware lives in `esp32/`: build it with
+`pio run -d esp32 -e esp32c3`. See [the firmware guide](esp32/README.md) for
+wiring, architecture, upload instructions and verification.
 Simulator sound descriptions are separate from the PC audio
 backend, allowing the sound behavior to be reused with ESP32 buzzer output.
 
