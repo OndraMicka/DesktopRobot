@@ -1,64 +1,139 @@
 #include "Robot.h"
 #include <Arduino.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #ifdef ARDUINO
 #include <esp_system.h>
+
 #endif
+namespace {
+const char* stateName(RobotState state) {
+ const char* names[]={"IDLE","TIRED","SLEEP","ERROR"};
+ return names[static_cast<unsigned>(state)];
+}
+void advance(LocalTime& time, uint32_t& remainder, uint32_t elapsed) {
+ if (!time.valid) return;
+ const uint64_t ms=uint64_t(remainder)+elapsed;
+ remainder=ms%1000;
+ const uint64_t seconds=time.second+ms/1000;
+ time.day+=seconds/86400; time.second=seconds%86400;
+}
+}
+void Robot::log(const char* message) {
+#if ROBOT_DEBUG_CONSOLE
+ console_.log("%s\n",message);
+#else
+ Serial.println(message);
+#endif
+}
+void Robot::outputLog(void* context, const char* message) { static_cast<Robot*>(context)->log(message); }
+void Robot::reportState() {
+ if (!stateLogged_ || loggedState_!=state()) {
+  loggedState_=state(); stateLogged_=true;
+  char message[48]; std::snprintf(message,sizeof(message),"[STATE] %s",stateName(state())); log(message);
+ }
+}
 bool Robot::begin() {
+ clockTick_=millis();
+ display_.setLog(outputLog,this);
  HardwareDiagnostics diagnostics;
  result_=diagnostics.run(display_,input_);
  if (!result_.ok) {
-  Serial.printf("[ERROR] %s\n",result_.error);
+  char message[160]; std::snprintf(message,sizeof(message),"[ERROR] %s",result_.error); log(message);
   behavior_.setState(RobotState::ERROR);
  } else {
-  Serial.println("[CLOCK] UNSET: send TIME <local epoch seconds> to enable schedule");
-  behavior_.begin(millis());
+  timeManager_.begin(millis(),outputLog,this);
+  updateClock(millis());
+  log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
+  behavior_.begin(millis(),effectiveTime());
  }
+ reportState();
+#if ROBOT_DEBUG_CONSOLE
+ console_.log("[CONSOLE] Ready at 115200 baud. Type help\n");
+#endif
  return result_.ok;
 }
 void Robot::update() {
- if (behavior_.state()==RobotState::ERROR) { display_.showErrorFace(); return; }
  const uint32_t now=millis();
- updateClock(now);
- behavior_.update(now,localTime_);
- input_.update(now);
+ if (state()!=RobotState::ERROR) {
+  updateClock(now);
+  behavior_.update(now,effectiveTime()); reportState();
+ }
+#if ROBOT_DEBUG_CONSOLE
+ console_.update(); // Read-only status/help/diag remain available in ERROR.
+#endif
+ if (state()==RobotState::ERROR) { display_.showErrorFace(); return; }
+ const uint32_t eventNow=millis();
+ if (shakePending_ && eventNow-shakeStart_>=shakeDuration_) {
+  shakePending_=false; handleEvent(InputEvent::SHAKE_END);
+ }
+ input_.update(eventNow);
  InputEvent event;
- while (input_.pollEvent(event)) behavior_.handleEvent(event);
- display_.update(now);
- behavior_.update(now,localTime_);
+ while (input_.pollEvent(event)) handleEvent(event);
+ display_.update(eventNow);
+ behavior_.update(eventNow,effectiveTime()); reportState();
 }
-
+void Robot::handleEvent(InputEvent event) {
+ const char* names[]={"NONE","TAP","HOLD","RELEASE","SHAKE_START","SHAKE_END"};
+ char message[112];
+ std::snprintf(message,sizeof(message),"[EVENT] %s received state=%s mode=%s%s",names[static_cast<unsigned>(event)],
+  stateName(state()),behavior_.modeName(),state()==RobotState::ERROR ? " (blocked by ERROR)" : "");
+ log(message);
+ behavior_.handleEvent(event); reportState();
+}
+void Robot::requestState(RobotState target, bool morning) {
+ if (state()==RobotState::ERROR) { log("[ERROR] State request blocked: ERROR is latched"); return; }
+ const bool scheduled=std::strcmp(behavior_.modeName(),"SCHEDULE")==0;
+ behavior_.requestState(target,morning); reportState();
+ log(scheduled ? "[REQUEST] Deferred to schedule priority; request ignored" : "[REQUEST] State transition requested");
+}
+void Robot::simulateShake(uint32_t duration) {
+ if (state()==RobotState::ERROR || !duration || duration>600000) return;
+ shakePending_=true; shakeStart_=millis(); shakeDuration_=duration;
+ handleEvent(InputEvent::SHAKE_START);
+}
 void Robot::setLocalTime(uint64_t seconds) {
- localTime_={static_cast<int64_t>(seconds/86400),static_cast<uint32_t>(seconds%86400),true};
- clockTick_=millis(); clockRemainder_=0;
- Serial.println("[CLOCK] Local time configured");
+ if (state()==RobotState::ERROR) return;
+ updateClock(millis());
+ timeManager_.setManualLocalTime(seconds,millis());
+ realTime_=timeManager_.localTime();
+ log("[CLOCK] Real fallback time configured");
+ if (!simulated_) behavior_.changeTime(millis(),realTime_);
+ reportState();
+}
+void Robot::setSimulatedTime(uint32_t second) {
+ if (state()==RobotState::ERROR || second>=86400) return;
+ updateClock(millis());
+ const bool enteringSimulation=!simulated_;
+ simulatedTime_={simulated_ ? simulatedTime_.day : realTime_.valid ? realTime_.day : 0,second,true};
+ simulated_=true; simulatedRemainder_=0;
+ behavior_.changeTime(millis(),simulatedTime_,enteringSimulation); reportState();
+ log("[CLOCK] SIMULATED time changed; clock continues at normal speed");
+}
+void Robot::useAutoTime() {
+ if (state()==RobotState::ERROR) return;
+ updateClock(millis()); simulated_=false; shakePending_=false;
+ behavior_.changeTime(millis(),realTime_,true); reportState();
+ log(realTime_.valid ? "[CLOCK] AUTO restored; schedule reconciled" : "[CLOCK] AUTO UNSET: real time unavailable; IDLE fallback, schedule inactive");
 }
 void Robot::updateClock(uint32_t now) {
-#ifdef ARDUINO
- while (Serial.available()) {
-  const char c=static_cast<char>(Serial.read());
-  if (c=='\r') continue;
-  if (c=='\n') {
-   timeCommand_[timeCommandLength_]='\0';
-   if (std::strncmp(timeCommand_,"TIME ",5)==0) {
-    char* end=nullptr;
-    const auto seconds=std::strtoull(timeCommand_+5,&end,10);
-    if (end!=timeCommand_+5 && *end=='\0' && timeCommand_[5]!='-') { setLocalTime(seconds); clockTick_=now; }
-    else Serial.println("[CLOCK] Invalid TIME command");
-   }
-   timeCommandLength_=0;
-  } else if (timeCommandLength_+1<sizeof(timeCommand_)) timeCommand_[timeCommandLength_++]=c;
-  else timeCommandLength_=0;
- }
-#endif
- if (!localTime_.valid) return;
- const uint64_t elapsed=uint64_t(now-clockTick_)+clockRemainder_;
- clockTick_=now; clockRemainder_=elapsed%1000;
- const uint64_t seconds=localTime_.second+elapsed/1000;
- localTime_.day+=seconds/86400; localTime_.second=seconds%86400;
+ const auto elapsed=now-clockTick_; clockTick_=now;
+ advance(simulatedTime_,simulatedRemainder_,elapsed);
+ timeManager_.update(now);
+ realTime_=timeManager_.localTime();
 }
-
+void Robot::describeStatus(char* buffer, std::size_t size) const {
+ const auto time=effectiveTime();
+ const auto* animation=display_.currentAnimation();
+ std::snprintf(buffer,size,
+  "[STATUS] state=%s animation=%s finished=%s mode=%s\n[CLOCK] mode=%s valid=%s day=%lld time=%02lu:%02lu:%02lu real=%s source=%s wifi=%s\n[REACTION] temporary=%s remaining_ms=%lu held=%s shake_timer=%s\n[ERROR] %s\n[TIME_ERROR] %s",
+  stateName(state()),animation ? animation->name : "NONE",display_.isAnimationFinished() ? "yes" : "no",behavior_.modeName(),
+  simulated_ ? "SIMULATED" : "AUTO",time.valid ? "yes" : "no",static_cast<long long>(time.day),
+  static_cast<unsigned long>(time.second/3600),static_cast<unsigned long>((time.second/60)%60),static_cast<unsigned long>(time.second%60),
+  realTime_.valid ? "available" : "UNSET",timeManager_.status(),timeManager_.radioOff() ? "OFF" : "ON",behavior_.temporaryName(),static_cast<unsigned long>(behavior_.temporaryRemainingMs()),
+  behavior_.touchHeld() ? "yes" : "no",shakePending_ ? "active" : "off",result_.error ? result_.error : "none",timeManager_.lastError() ? timeManager_.lastError() : "none");
+}
 uint32_t Robot::randomValue(void*) {
 #ifdef ARDUINO
  return esp_random();

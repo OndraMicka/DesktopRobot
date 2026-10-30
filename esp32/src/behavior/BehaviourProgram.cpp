@@ -20,7 +20,7 @@ void BehaviourProgram::resetTimers() {
 }
 void BehaviourProgram::base() {
     mode_ = Mode::Base;
-    sequenceCount_ = 0;
+    sequenceCount_ = 0; quickWake_=false;
     output_.playBase(state_, now_);
     resetTimers();
 }
@@ -30,12 +30,13 @@ void BehaviourProgram::begin(uint32_t now, LocalTime local) {
     checkSchedule();
 }
 void BehaviourProgram::start(Mode mode, const AnimationId* ids, unsigned count, bool holdLast) {
+    quickWake_=false;
     mode_ = mode;
     sequenceCount_ = count;
     sequenceIndex_ = 0;
     holdLast_ = holdLast;
     for (unsigned i = 0; i < count; ++i) sequence_[i] = ids[i];
-    output_.playAnimation(sequence_[0], now_, holdLast_ && count == 1);
+    playStep();
 }
 void BehaviourProgram::transition(RobotState target, Mode mode, bool morning) {
     const auto source = state_;
@@ -81,7 +82,7 @@ void BehaviourProgram::checkSchedule() {
     // Midnight is not a schedule boundary; the last boundary is previous bedtime.
     const int64_t boundary = phase < 0 ? (local_.day-1)*3+2 : local_.day*3+phase;
     if (scheduleKnown_ && boundary == scheduleBoundary_) return;
-    const bool morning = scheduleKnown_ && phase == 0;
+    const bool morning = phase == 0 && (scheduleKnown_ || state_ != RobotState::IDLE);
     scheduleKnown_ = true; scheduleBoundary_ = boundary;
     temporary_ = Temporary::None; held_ = false;
     const auto target = phase == 0 ? RobotState::IDLE : phase == 1 ? RobotState::TIRED : RobotState::SLEEP;
@@ -92,7 +93,7 @@ void BehaviourProgram::handleEvent(InputEvent event) {
     if (state_ == RobotState::ERROR || event == InputEvent::NONE) return;
     if (event == InputEvent::RELEASE) {
         held_ = false;
-        if (mode_ == Mode::Reaction && output_.isAnimationFinished() && sequenceIndex_+1 == sequenceCount_) finishReaction();
+        if (mode_ == Mode::Reaction && holdLast_) finishReaction();
         return;
     }
     if (mode_ == Mode::Schedule) return;
@@ -111,24 +112,12 @@ void BehaviourProgram::handleEvent(InputEvent event) {
     }
     if (mode_ == Mode::Shake || mode_ == Mode::Dizzy) return;
     if (event != InputEvent::TAP && event != InputEvent::HOLD) return;
-    const bool wakingReaction = mode_ == Mode::Reaction && sequenceCount_
-        && sequence_[0] == AnimationId::SleepToTired;
-    if (wakingReaction && sequenceIndex_ == 0 && !output_.isAnimationFinished()) {
-        // Retain the opening currently on screen; replace only the reaction tail.
-        held_ = event == InputEvent::HOLD;
-        sequence_[1] = held_ ? AnimationId::LookUp : AnimationId::Angry;
-        sequence_[2] = AnimationId::Smile;
-        sequenceCount_ = held_ ? 3 : 2;
-        holdLast_ = held_;
-        output_.interactionSound(held_);
-        return;
-    }
-    const auto origin = wakingReaction ? RobotState::TIRED : state_;
+    const bool wasOpening=quickWake_;
+    const auto origin=state_;
     returnState_ = origin;
     held_ = event == InputEvent::HOLD;
     AnimationId ids[4]; unsigned count = 0;
-    if (origin == RobotState::SLEEP) ids[count++] = AnimationId::SleepToTired;
-    else if (origin == RobotState::TIRED && !held_) ids[count++] = AnimationId::TiredToIdle;
+
     if (held_) { ids[count++] = AnimationId::LookUp; ids[count++] = AnimationId::Smile; }
     else ids[count++] = AnimationId::Angry;
     if (origin == RobotState::SLEEP) {
@@ -141,7 +130,12 @@ void BehaviourProgram::handleEvent(InputEvent event) {
         }
     }
     output_.interactionSound(held_);
-    start(Mode::Reaction, ids, count, held_);
+    if (origin!=RobotState::IDLE) {
+        mode_=Mode::Reaction; sequenceCount_=count; sequenceIndex_=0; holdLast_=held_;
+        for(unsigned i=0;i<count;++i) sequence_[i]=ids[i];
+        quickWake_=true;
+        if(!wasOpening) output_.playTouchWake(origin,now_);
+    } else start(Mode::Reaction, ids, count, held_);
 }
 void BehaviourProgram::finishReaction() {
     if (temporary_ == Temporary::Early) returnState_ = RobotState::TIRED;
@@ -181,9 +175,10 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
     if (mode_ == Mode::Shake) return;
     if (mode_ != Mode::Base) {
         if (!output_.isAnimationFinished()) return;
+        if (quickWake_) { quickWake_=false; playStep(); return; }
         if (sequenceCount_ && sequenceIndex_+1 < sequenceCount_) {
             ++sequenceIndex_;
-            output_.playAnimation(sequence_[sequenceIndex_], now_, holdLast_ && sequenceIndex_+1 == sequenceCount_);
+            playStep();
             return;
         }
         if (mode_ == Mode::Reaction) {
@@ -208,4 +203,46 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
         const auto id = state_ == RobotState::IDLE ? AnimationId::Blink : AnimationId::SlowBlink;
         start(Mode::Blink, &id, 1);
     }
+}
+
+void BehaviourProgram::requestState(RobotState target, bool morning) {
+    if (state_ == RobotState::ERROR || mode_ == Mode::Schedule) return;
+    if (target == state_ && mode_ == Mode::Base && !morning) return;
+    held_ = false; temporary_ = Temporary::None;
+    transition(target, Mode::Transition, morning && target == RobotState::IDLE);
+}
+void BehaviourProgram::changeTime(uint32_t now, LocalTime local, bool restoreSchedule) {
+    if (state_ == RobotState::ERROR) return;
+    now_ = now; local_ = local;
+    if (restoreSchedule) {
+        temporary_ = Temporary::None; held_ = false;
+        if (!local.valid) {
+            scheduleKnown_ = false;
+            if (state_ != RobotState::IDLE) transition(RobotState::IDLE, Mode::Transition);
+            else base();
+            return;
+        }
+        const auto target = local.second < 25200 || local.second >= 77400 ? RobotState::SLEEP
+            : local.second >= 75600 ? RobotState::TIRED : RobotState::IDLE;
+        if (!(mode_ == Mode::Schedule && target == state_)) scheduleKnown_ = false;
+    }
+    checkSchedule();
+}
+const char* BehaviourProgram::modeName() const {
+    const char* names[] = {"BASE","ACTIVITY","BLINK","REACTION","TRANSITION","SCHEDULE","SHAKE","DIZZY"};
+    return names[static_cast<unsigned>(mode_)];
+}
+const char* BehaviourProgram::temporaryName() const {
+    const char* names[] = {"NONE","IDLE_THEN_TIRED","TIRED_THEN_SLEEP","EARLY_UNTIL_07"};
+    return names[static_cast<unsigned>(temporary_)];
+}
+uint32_t BehaviourProgram::temporaryRemainingMs() const {
+    if (temporary_ == Temporary::None || temporary_ == Temporary::Early) return 0;
+    const auto elapsed = now_-temporaryStart_;
+    return elapsed < config_.temporaryMs ? config_.temporaryMs-elapsed : 0;
+}
+
+void BehaviourProgram::playStep() {
+ if(mode_==Mode::Reaction && sequence_[sequenceIndex_]==AnimationId::LookUp) output_.playTouchLookUp(now_);
+ else output_.playAnimation(sequence_[sequenceIndex_],now_,holdLast_ && sequenceIndex_+1==sequenceCount_);
 }

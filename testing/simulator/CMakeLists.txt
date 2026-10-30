@@ -9,6 +9,8 @@ find_package(SDL2 CONFIG REQUIRED)
 
 add_executable(desktop_robot_simulator
     src/main.cpp
+    ../../esp32/src/display/animations/TouchWakeAnimation.cpp
+    ../../esp32/src/display/animations/TouchLookUpAnimation.cpp
     ../../esp32/src/behavior/BehaviourProgram.cpp
     src/Framebuffer.cpp
     src/SDLRenderer.cpp

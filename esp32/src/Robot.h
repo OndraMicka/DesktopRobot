@@ -2,22 +2,43 @@
 #include "behavior/BehaviourProgram.h"
 #include "display/OutputDisplay.h"
 #include "diagnostics/HardwareDiagnostics.h"
+#include "config/Debug.h"
+#include "time/TimeManager.h"
+#if ROBOT_DEBUG_CONSOLE
+#include "debug/DebugConsole.h"
+#endif
 class Robot {
 public:
  bool begin();
  void update();
  void setLocalTime(uint64_t localEpochSeconds);
- void handleEvent(InputEvent event) { behavior_.handleEvent(event); }
+ void handleEvent(InputEvent event);
+ void requestState(RobotState state, bool morning = false);
+ void simulateShake(uint32_t durationMs);
+ void setSimulatedTime(uint32_t second);
+ void useAutoTime();
+ void describeStatus(char* buffer, std::size_t size) const;
+ RobotState state() const { return behavior_.state(); }
  const DiagnosticResult& diagnostics() const { return result_; }
 private:
- LocalTime localTime_{};
- uint32_t clockTick_=0, clockRemainder_=0;
- char timeCommand_[40]{};
- unsigned timeCommandLength_=0;
+ LocalTime realTime_{}, simulatedTime_{};
+ bool simulated_=false, shakePending_=false;
+ uint32_t clockTick_=0, simulatedRemainder_=0;
+ uint32_t shakeStart_=0, shakeDuration_=0;
+ RobotState loggedState_=RobotState::IDLE;
+ bool stateLogged_=false;
  void updateClock(uint32_t now);
+ LocalTime effectiveTime() const { return simulated_ ? simulatedTime_ : realTime_; }
+ void reportState();
+ void log(const char* message);
+ static void outputLog(void* context, const char* message);
+ TimeManager timeManager_;
  InputController input_;
  OutputDisplay display_;
  static uint32_t randomValue(void*);
  BehaviourProgram behavior_{display_, {}, randomValue};
  DiagnosticResult result_{false,"Not started"};
+#if ROBOT_DEBUG_CONSOLE
+ DebugConsole console_{*this};
+#endif
 };

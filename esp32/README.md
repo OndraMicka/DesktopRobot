@@ -56,28 +56,32 @@ Firmware generates only
   pending-classification range. A missed hold threshold still emits HOLD followed
   by RELEASE on the following update.
 
-## Local clock on ESP32
+## Debug console and local clock
 
-No RTC, NTP or Wi-Fi dependency was added. At startup the clock is explicitly
-UNSET and the robot stays IDLE with interaction/spontaneous behavior. The daily
-schedule becomes active only when valid local time is supplied.
+The development `esp32c3` environment has a nonblocking USB Serial console at
+115200 baud. See [console commands and test scenarios](../docs/DebugConsole.md).
+Build `esp32c3-production` to compile it out (`ROBOT_DEBUG_CONSOLE=0`).
 
-Send one Serial line `TIME <local epoch seconds>` (integer seconds, newline).
-For testing a day count of zero is sufficient:
+`time HH:MM` selects a separate simulated clock running at normal speed.
+`time auto` restores the independently advancing real clock and reconciles the
+schedule, removing temporary debug reactions. Neither operation writes to NVS.
 
-| Serial command | Local time |
-|---|---|
-| `TIME 25199` | 06:59:59 |
-| `TIME 75599` | 20:59:59 |
-| `TIME 77399` | 21:29:59 |
-| `TIME 21600` | 06:00:00 |
-| `TIME 79200` | 22:00:00 |
+AUTO is provided by `TimeManager`: after hardware diagnostics, ESP32 connects
+using `include/WifiConfig.h`, waits for a fresh verified NTP response, then stops
+SNTP and turns Wi-Fi OFF. Failed attempts retry without blocking behavior.
+The exact Czech timezone is CET-1CEST,M3.5.0/2,M10.5.0/3.
+See [Wi-Fi setup and time verification](../docs/WifiTime.md).
 
-The clock advances using elapsed milliseconds and wraps across days. Software
-can call `Robot::setLocalTime(day * 86400 + secondsSinceMidnight)`; a future RTC
-or time-sync provider can use the same interface. It is local civil time, not a
-UTC timestamp. Reconfigure after reboot or daylight-saving changes. The firmware
-does not invent a valid time or claim to retain it without a time source.
+Copy `include/WifiConfig.example.h` to the Git-ignored `include/WifiConfig.h`
+if missing, then enter your SSID/password locally. Without credentials the
+firmware builds but reports missing configuration and leaves time invalid.
+The ESP32 communicates directly with Wi-Fi/NTP; the PC is not a time provider.
+
+`Robot::setLocalTime` and legacy `TIME <local epoch seconds>` remain available.
+Manual time cancels automatic synchronization until reboot, including in-flight
+responses. Simulated HH:MM time is independent. `time auto` restores the real
+NTP/manual source, or explicitly reports UNSET if none exists. Every restart
+requires fresh NTP synchronization; manual/simulated time is not persisted.
 
 ## Behavior
 
@@ -95,7 +99,7 @@ morning boundary. Timers begin after the completed reaction/release.
 HOLD: LookUp -> Smile, preceded by SleepToTired when sleeping. The existing
 smiling frame is held until RELEASE, without replaying the animation. Release
 restores IDLE/TIRED or leaves a woken sleeper TIRED under the temporary rules.
-An early release lets the current friendly sequence finish once.
+An early release cancels the friendly sequence and restores its return state.
 
 Priority: latched ERROR, then scheduled transitions, then shake/recovery and user
 interactions, required transitions, spontaneous activity, blinking. A scheduled
@@ -174,3 +178,11 @@ catalog hashes match the original pre-change catalog.
 
 ESP32 build, host tests and SDL2 compilation passed. Physical upload, touch/OLED
 verification and interactive GUI checks were not performed.
+
+## Fast touch reactions
+
+TAP/HOLD from TIRED or SLEEP uses TouchWakeAnimation (220 ms), not the full
+wake transition. HOLD then uses TouchLookUpAnimation (200 ms) before Smile.
+RELEASE cancels the remaining friendly sequence immediately and restores the
+appropriate state. HOLD detection remains 700 ms. Full state transitions and
+scheduled sequences retain their original timing and priority.

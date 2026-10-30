@@ -5,8 +5,12 @@
 #include "../config/Pins.h"
 class OutputDisplay : public AnimationOutput {
 public:
+ using Log = void (*)(void*, const char*);
+ void setLog(Log callback, void* context) { log_=callback; logContext_=context; }
  bool begin();
  void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) override;
+ void playTouchWake(RobotState source,uint32_t now) override;
+ void playTouchLookUp(uint32_t now) override;
  void playBase(RobotState state, uint32_t now) override;
  void playShakeRecovery(uint32_t now) override;
  void update(uint32_t now);
@@ -20,6 +24,9 @@ private:
  AnimationPlayer player_;
  uint32_t lastUpdate_ = 0;
  bool ready_=false, dirty_=false, error_=false, completionLogged_=false;
+ Log log_=nullptr;
+ void* logContext_=nullptr;
+ void report(const char* message);
  void render();
  void play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit = 0);
 };

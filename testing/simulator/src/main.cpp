@@ -15,6 +15,8 @@
 #include "ui/UI.h"
 #include "../../../esp32/src/behavior/BehaviourProgram.h"
 #include <ctime>
+#include "../../../esp32/src/display/animations/TouchWakeAnimation.h"
+#include "../../../esp32/src/display/animations/TouchLookUpAnimation.h"
 #include <cstdio>
 
 namespace
@@ -26,6 +28,8 @@ namespace
             const auto limit = hold ? desktoprobot::getExpressionFrameCount(id) : 0U;
             player_.play(desktoprobot::getTestAnimation(id), limit);
         }
+        void playTouchWake(::RobotState source,uint32_t) override { player_.play(desktoprobot::TouchWakeAnimation::get(static_cast<desktoprobot::RobotState>(source))); }
+        void playTouchLookUp(uint32_t) override { player_.play(desktoprobot::TouchLookUpAnimation::get()); }
         void playBase(::RobotState state, uint32_t) override {
             player_.play(desktoprobot::getStateAnimation(static_cast<desktoprobot::RobotState>(state)));
         }

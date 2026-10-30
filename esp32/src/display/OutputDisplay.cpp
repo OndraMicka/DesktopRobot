@@ -2,6 +2,7 @@
 #include "animations/AnimationCatalog.h"
 #include <Arduino.h>
 #include <Wire.h>
+#include <cstdio>
 bool OutputDisplay::begin() {
  display_.setI2CAddress(Pins::OLED_ADDRESS<<1);
  display_.setBusClock(Pins::I2C_HZ);
@@ -12,7 +13,7 @@ bool OutputDisplay::begin() {
 void OutputDisplay::play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit) {
  if (!ready_ || error_) return;
  player_.play(animation, limit); lastUpdate_=now; dirty_=true; completionLogged_=false;
- Serial.printf("[ANIM] %s\n",animation.name);
+ char message[96]; std::snprintf(message,sizeof(message),"[ANIM] started %s",animation.name); report(message);
 }
 void OutputDisplay::playAnimation(AnimationId id, uint32_t now, bool holdExpression) {
  if (!ready_ || error_) return;
@@ -46,7 +47,7 @@ void OutputDisplay::update(uint32_t now) {
  player_.update(now-lastUpdate_); lastUpdate_=now;
  dirty_=previous!=&player_.frame() || dirty_;
  if (player_.isFinished() && !completionLogged_) {
-  Serial.println("[ANIM] finished"); completionLogged_=true;
+  char message[96]; std::snprintf(message,sizeof(message),"[ANIM] finished %s",player_.getCurrentAnimation()->name); report(message); completionLogged_=true;
  }
  if (dirty_) render();
 }
@@ -55,3 +56,11 @@ void OutputDisplay::showErrorFace() {
  player_.play(getErrorAnimation());
  error_=true; render();
 }
+
+void OutputDisplay::report(const char* message) {
+ if (log_) log_(logContext_,message);
+ else Serial.println(message);
+}
+
+void OutputDisplay::playTouchWake(RobotState source,uint32_t now) { if(ready_ && !error_) play(getTouchWakeAnimation(static_cast<desktoprobot::RobotState>(source)),now); }
+void OutputDisplay::playTouchLookUp(uint32_t now) { if(ready_ && !error_) play(getTouchWakeAnimation(desktoprobot::RobotState::Idle,true),now); }

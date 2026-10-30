@@ -18,6 +18,8 @@ class AnimationOutput {
 public:
     virtual ~AnimationOutput() = default;
     virtual void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) = 0;
+    virtual void playTouchWake(RobotState source,uint32_t now) = 0;
+    virtual void playTouchLookUp(uint32_t now) = 0;
     virtual void playBase(RobotState state, uint32_t now) = 0;
     virtual void playShakeRecovery(uint32_t now) = 0;
     virtual bool isAnimationFinished() const = 0;
@@ -68,6 +70,13 @@ public:
     void update(uint32_t now, LocalTime local = {});
     void setState(RobotState state);
     void preview(AnimationId id);
+    void requestState(RobotState target, bool morning = false);
+    void changeTime(uint32_t now, LocalTime local, bool restoreSchedule = false);
+    const char* modeName() const;
+    const char* temporaryName() const;
+    bool touchHeld() const { return held_; }
+    uint32_t temporaryRemainingMs() const;
+
     void enableSpontaneous(bool enabled) { spontaneous_ = enabled; }
     RobotState state() const { return state_; }
     bool busy() const { return mode_ != Mode::Base; }
@@ -91,7 +100,8 @@ private:
     bool scheduleKnown_ = false, held_ = false, spontaneous_ = true;
     std::array<AnimationId, 4> sequence_{};
     unsigned sequenceCount_ = 0, sequenceIndex_ = 0;
-    bool holdLast_ = false;
+    bool holdLast_ = false, quickWake_ = false;
+    void playStep();
     uint32_t randomValue();
     uint32_t range(uint32_t min, uint32_t max);
     void resetTimers();

@@ -215,3 +215,7 @@ default: break;
 #include "ErrorFaceAnimation.h"
 const desktoprobot::Animation& getAnimation(AnimationId id) { return desktoprobot::getTestAnimation(id); }
 const desktoprobot::Animation& getErrorAnimation() { return desktoprobot::ErrorFaceAnimation::get(); }
+
+#include "TouchWakeAnimation.h"
+#include "TouchLookUpAnimation.h"
+const desktoprobot::Animation& getTouchWakeAnimation(desktoprobot::RobotState source,bool lookUp) { return lookUp ? desktoprobot::TouchLookUpAnimation::get() : desktoprobot::TouchWakeAnimation::get(source); }
