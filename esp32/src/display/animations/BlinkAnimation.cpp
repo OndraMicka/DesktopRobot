@@ -1,6 +1,11 @@
-#include "AnimationCatalog.h"
-#include "Poses.h"
-namespace {
-constexpr desktoprobot::Frame frames[] = {poses::frame(60,poses::idle), poses::frame(120,poses::closed), poses::frame(60,poses::idle)};
+#include "BlinkAnimation.h"
+namespace desktoprobot {
+void BlinkAnimation::build(animationdata::AnimationStorage& storage) {
+using namespace animationdata;
+auto add = [&](const char* label, const std::array<Pose,7>& poses, std::array<uint32_t,7> durations, std::size_t count=3) {
+for(std::size_t i=0;i<count;++i) durations[i]+=durations[i]/2;
+createAnimation(storage,label,poses,durations,count);
+};
+add("BLINK", { neutral, eyesClosed, neutral, eyesClosed, neutral }, { 140, 90, 220, 90, 180 }, 5);
 }
-const desktoprobot::Animation blinkAnimation = {"BLINK",frames,3,false};
+}

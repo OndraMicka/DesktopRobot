@@ -1,116 +1,176 @@
-# DesktopRobot firmware
+# DesktopRobot firmware and shared behavior
 
-Modular firmware for ESP32-C3 Super Mini, SH1106 128x64 and TTP223.
-The original hardware test remains in `testing/testingFilmware/`.
+ESP32-C3 Super Mini, SH1106 128x64 and TTP223. The hardware test in
+`testing/testingFilmware/` remains separate. The SDL simulator now uses the same
+`BehaviourProgram` and animation definitions as firmware.
 
-## Wiring
+## Wiring and build
 
-| Module | Signal | ESP32-C3 |
-|---|---|---|
-| OLED | SDA | GPIO4 |
-| OLED | SCL | GPIO5 |
-| TTP223 | OUT | GPIO1 |
-| Both | VCC / GND | 3V3 / GND |
+| Signal | ESP32-C3 |
+|---|---|
+| OLED SDA | GPIO4 |
+| OLED SCL | GPIO5 |
+| TTP223 OUT | GPIO1 |
+| Module VCC / GND | 3V3 / GND |
 
-`src/config/Pins.h` preserves the previous hardware test pins. It also defines
-active-HIGH touch polarity, 35 ms debounce, 1000 ms HOLD, and OLED address 0x3C.
-Set `OLED_ADDRESS` explicitly to 0x3D for that module variant. No automatic pin
-search or configuration changes occur.
-
-## Build, upload and monitor
-
-From the repository root:
+Configuration: `src/config/Pins.h`, active HIGH, debounce 35 ms, HOLD 700 ms,
+OLED address 0x3C (explicitly change to 0x3D for that panel).
 
 ```powershell
 pio run -d esp32 -e esp32c3
 pio run -d esp32 -e esp32c3 -t upload
 pio device monitor -d esp32 -b 115200
-```
-
-Inside `esp32/`, use `pio run -e esp32c3`. If `pio` is not in PATH, substitute
-`& "$env:USERPROFILE/.platformio/penv/Scripts/platformio.exe"` for `pio`.
-With multiple connected devices, add `--upload-port COMx` to upload and `-p COMx`
-to monitor. Open the monitor and reset the board to capture startup logs: boot
-does not wait for a USB host.
-
-The existing board/framework/U8g2 2.36.15 configuration is inherited from the
-hardware test, with the same USB CDC flags and no requested platform upgrade.
-The firmware uses its own source/build folders and C++17 for shared graphics.
-
-## Files and data flow
-
-- `src/main.cpp`: only initializes and updates Robot.
-- `src/Robot.h/.cpp`: component ownership, startup and event delivery.
-- `src/config/Pins.h`: fixed wiring and input settings.
-- `src/input/InputController.h/.cpp`: debounce, TAP and HOLD; no graphics.
-- `src/behavior/BehaviourProgram.h/.cpp`: the sole state machine and animation selection.
-- `src/display/OutputDisplay.h/.cpp`: U8g2 output and static error screen.
-- `src/display/AnimationPlayer.h/.cpp`: nonblocking frame timing and latched completion.
-- `src/display/AnimationId.h`: animation identifiers.
-- `src/display/SharedGraphics.h/.cpp`: compiles the existing framebuffer and
-  DrawCommand renderer from `testing/simulator/src/` without SDL or copied primitives.
-- `src/display/animations/AnimationCatalog.h/.cpp`, `Poses.h`,
-  `BlinkAnimation.cpp`, `AngryAnimation.cpp`, `SmileAnimation.cpp`,
-  `YawnAnimation.cpp`: constant frames and catalog.
-- `src/diagnostics/HardwareDiagnostics.h/.cpp`: Serial, I2C, OLED ACK before/after
-  initialization, and touch configuration.
-- `host/tests.cpp`, `host/run.ps1`, `host/stubs/{Arduino,Wire,U8g2lib}.h`:
-  automated tests with simulated hardware.
-
-GPIO -> InputController -> TAP/HOLD -> BehaviourProgram -> AnimationId ->
-OutputDisplay -> AnimationPlayer -> shared framebuffer -> U8g2.
-The player reports completion; behavior chooses the following animation.
-
-TAP on release plays ANGRY, HOLD once while pressed plays SMILE. Release after
-HOLD emits no TAP. A new event interrupts any normal animation, including the
-same expression. IDLE blinks after four seconds of quiet. TIRED and SLEEP are
-available through explicit `setState`, with no automatic daily schedule.
-ERROR is latched until restart and ignores input, keeping a static sad face and
-ERROR text when the display is initialized. Frames are sent only when needed.
-
-The PC animation catalog reserves large interpolation tables for all animations;
-the firmware instead uses a small constant catalog based on the existing eye and
-mouth geometry. The PC player also automatically resumes a prior loop; this
-player retains the last frame and leaves the next selection to behavior.
-The PC simulator and hardware test sources are unchanged.
-
-## Diagnostics and limits
-
-Diagnostics run on every boot. Missing OLED ACK or failed I2C/display initialization
-enters ERROR without normal animations or touch reads. U8g2 `begin()` alone does
-not verify electrical operation. ACK confirms a responding I2C device, not visible
-pixels or the correct panel type. An unavailable OLED cannot display the error;
-the reason is logged to Serial when connected.
-
-TTP223 has only a digital OUT, so the log says `CONFIGURED (not electrically
-verifiable)`, never VERIFIED. Boot does not wait for touch. This is a startup
-check, not continuous detection of display disconnection during operation.
-Input uses one event slot consumed by Robot on every update; other consumers
-must also poll it regularly.
-
-## Verification
-
-Windows host tests require g++ in PATH:
-
-```powershell
 ./esp32/host/run.ps1
 ```
 
-Tests cover debounce, one TAP on release, HOLD during press without a later TAP,
-the 1000 ms boundary, slow updates, millis wraparound, animation completion and
-interruption, blinking, explicit states and failed boot without input processing.
-These mocks do not replace electrical or visual tests.
+If needed, replace `pio` with
+`& "$env:USERPROFILE/.platformio/penv/Scripts/platformio.exe"`.
+Add `--upload-port COMx` for upload or `-p COMx` for monitor when needed.
+Reset with the monitor open to capture diagnostics; boot does not wait for USB.
+PlatformIO configuration is now standalone: inherited `extra_configs` used to
+overwrite the firmware build flags. Board, platform specification, U8g2 2.36.15
+and USB CDC flags are preserved; C++17 and ROBOT_COMPACT_ANIMATIONS are explicit.
 
-1. Build and upload using the commands above. Open the monitor, reset the board,
-   and verify OLED OK, TOUCH CONFIGURED and STATE IDLE.
-2. Check the calm face and blink after four seconds.
-3. Touch briefly and release: exactly one TAP, ANGRY, then IDLE.
-4. Hold over one second: exactly one HOLD while still touching, SMILE, then IDLE.
-   Release must not emit TAP.
-5. Touch during ANGRY/SMILE: the new reaction interrupts playback.
-6. Power off, disconnect OLED, and power on: OLED FAILED, reason, STATE ERROR.
-   Touch must produce no events or normal animations. Power off, reconnect OLED,
-   and boot again to verify diagnostics repeat on every restart.
+## Responsibilities
 
-Build passed for esp32c3: RAM 17524/327680 bytes, flash 364174/1310720 bytes.
-Host tests passed. Upload and physical hardware tests were not performed.
+- `main` calls Robot initialization and updates only.
+- Robot runs startup checks, updates the clock, supplies input and renders output.
+- `behavior/BehaviourProgram` is portable C++ without Arduino or SDL. It owns
+  schedules, temporary states, activity selection, priorities and sequences.
+- `AnimationOutput` is its small output port. Firmware OutputDisplay and the SDL
+  adapter implement it; neither chooses the following behavior.
+- The simulator AnimationPlayer provides explicit playback, retained final frames,
+  bounded expression playback, interrupt/replace, loop timing and completion.
+  Its previous auto-resume methods remain available for manual previews.
+- AnimationCatalog dispatches to individual classes in `src/display/animations/`,
+for example BlinkAnimation, AngryAnimation and SmileAnimation. Each class owns
+its hardcoded sequence and timing; AnimationBuilder supplies common geometry
+and interpolation. The simulator has its own TestAnimations.cpp implementation.
+All firmware sources live inside `esp32/`.
+Firmware generates only
+  the active animation in one static buffer; switching invalidates earlier frame
+  references. Recovery captures the release pose before overwriting that buffer.
+  There are no large automatic animation-storage objects on the stack.
+- InputController produces TAP, HOLD and RELEASE. A release after HOLD cannot
+  generate TAP. Releases below HOLD are TAP, including the suggested 300-700 ms
+  pending-classification range. A missed hold threshold still emits HOLD followed
+  by RELEASE on the following update.
+
+## Local clock on ESP32
+
+No RTC, NTP or Wi-Fi dependency was added. At startup the clock is explicitly
+UNSET and the robot stays IDLE with interaction/spontaneous behavior. The daily
+schedule becomes active only when valid local time is supplied.
+
+Send one Serial line `TIME <local epoch seconds>` (integer seconds, newline).
+For testing a day count of zero is sufficient:
+
+| Serial command | Local time |
+|---|---|
+| `TIME 25199` | 06:59:59 |
+| `TIME 75599` | 20:59:59 |
+| `TIME 77399` | 21:29:59 |
+| `TIME 21600` | 06:00:00 |
+| `TIME 79200` | 22:00:00 |
+
+The clock advances using elapsed milliseconds and wraps across days. Software
+can call `Robot::setLocalTime(day * 86400 + secondsSinceMidnight)`; a future RTC
+or time-sync provider can use the same interface. It is local civil time, not a
+UTC timestamp. Reconfigure after reboot or daylight-saving changes. The firmware
+does not invent a valid time or claim to retain it without a time source.
+
+## Behavior
+
+Schedule boundaries are 07:00 IDLE, 21:00 TIRED, 21:30 SLEEP. All six state
+transitions use existing catalog IDs. Morning adds the existing daytime yawn and
+look-around after the opening transition. State indicators show the destination
+as soon as a transition starts.
+
+TAP: IDLE -> Angry; TIRED -> TiredToIdle -> Angry -> temporary IDLE;
+SLEEP -> SleepToTired -> Angry -> temporary TIRED. Temporary IDLE expires after
+five minutes into TIRED, followed by SLEEP after another five. Night wake-ups
+return to SLEEP after five minutes. Wake-ups before 07:00 remain TIRED until the
+morning boundary. Timers begin after the completed reaction/release.
+
+HOLD: LookUp -> Smile, preceded by SleepToTired when sleeping. The existing
+smiling frame is held until RELEASE, without replaying the animation. Release
+restores IDLE/TIRED or leaves a woken sleeper TIRED under the temporary rules.
+An early release lets the current friendly sequence finish once.
+
+Priority: latched ERROR, then scheduled transitions, then shake/recovery and user
+interactions, required transitions, spontaneous activity, blinking. A scheduled
+boundary cancels the old interaction/sequence and its temporary return target;
+release cannot restore the obsolete state. Scheduled sequences cannot be
+interrupted by input. Duplicate SHAKE_START does not restart SHAKING; SHAKE_END
+uses the exact current frame for DIZZY, which a fresh SHAKE_START can interrupt.
+Shaking preserves the permanent state. Physical motion detection is not present;
+software can inject events through `Robot::handleEvent` and the simulator.
+
+`BehaviourConfig` contains per-state decision intervals, blink intervals,
+activity weights/cooldowns, quiet weight, temporary duration and random seed.
+Default decision intervals: IDLE 10-60 s, TIRED 20-90 s, SLEEP 30-120 s.
+Blink intervals: IDLE 3-7 s, TIRED 6-14 s, no ordinary SLEEP blinking.
+Blinking has a separate timer and does not postpone activity decisions.
+Activities cannot interrupt an interaction. Selection excludes the last chosen
+activity and activities on cooldown, and includes a quiet outcome. Random input
+can be injected for deterministic tests; firmware uses esp_random.
+
+## Specification reconciliation
+
+The detailed behavior specification and current simulator definitions take
+precedence over the earlier minimal-firmware implementation document.
+
+- SURPRISED no longer exists. SleepToTired provides the gradual waking/opening
+  before Angry; no replacement startled animation was invented.
+- The current TIRED-to-SLEEP ID is TiredToSleep; its label is TIRED TO SLEEP,
+  although an older specification table calls it GO TO SLEEP.
+- Smile serves contented and self-satisfied expressions with combined weight 10.
+  RandomCuriosity covers checking surroundings. Original supported IDLE weights
+  (LookAround 35, Thinking 10, IdleYawn 8, Bored 5, Listening 7) are retained.
+- There are no dedicated HUM or almost-falling-asleep animations. These are not
+  synthesized or selected. Quiet outcomes provide idle periods. Unspecified
+  intervals, other weights and cooldowns are configurable initial defaults.
+- Buzzer hardware and a motion sensor are not connected. Firmware emits no sound
+  and performs no physical shake detection. The SDL adapter uses existing Tap1
+  and Hold1 interaction sounds. No new sound or hardware dependency was added.
+- Fixed schedule boundaries immediately preempt lower-priority playback. This
+  follows the priority table; keeping an interaction beyond a boundary is not
+  used. Arbitrary transitions between incompatible existing expressions do not
+  gain invented morphs. The existing exact shake-to-dizzy blend is preserved.
+
+## Diagnostics
+
+Every restart checks I2C and OLED ACK before/after U8g2 initialization. A critical
+failure latches ERROR until reboot, disables inputs/normal behavior and displays
+a static sad face with ERROR when the OLED is available. U8g2 initialization and
+ACK cannot verify visible pixels. TTP223 is logged as CONFIGURED, not electrically
+verified. Display disconnection during runtime is not continuously monitored.
+
+## Simulator and tests
+
+Build the SDL app using the existing CMake project (`cmake -S testing -B build`,
+then `cmake --build build`); SDL2 development files are required. CTest includes
+state-transition and shared-behavior tests (`ctest --test-dir build --output-on-failure`).
+Windows without CMake can run all non-SDL tests using `./esp32/host/run.ps1`.
+
+The simulator starts in automatic mode with computer local time. Its window
+title shows the mode and time. Controls:
+
+- A or AUTO / PREVIEW: switch between behavior and the original animation previews.
+- T or TAP: tap. H or HOLD: hold; release the key/mouse or use RELEASE.
+- Space or SHAKE - HOLD: shake; release to run recovery.
+- Left/right arrow: shift the simulated local clock by five minutes.
+- F7 / F8 / F9: set one second before 07:00 / 21:00 / 21:30.
+- Existing state/animation buttons remain available. In automatic mode manual
+  state selection does not erase the next schedule boundary.
+
+Tests cover all schedule boundaries, six transitions, TAP/HOLD/RELEASE in each
+state, early/night wake-ups, two-stage timeouts, interruption, schedule priority,
+shake/recovery, deterministic random selection, cooldowns, quiet outcomes,
+state restrictions, millis overflow, diagnostics and ERROR.
+Catalog snapshots compare every pixel and frame duration of all 25 animations,
+three state loops and recovery from every shake frame. The compact and desktop
+catalog hashes match the original pre-change catalog.
+
+ESP32 build, host tests and SDL2 compilation passed. Physical upload, touch/OLED
+verification and interactive GUI checks were not performed.

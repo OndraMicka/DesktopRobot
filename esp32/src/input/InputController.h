@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-enum class InputEvent { NONE, TAP, HOLD };
+#include "../behavior/BehaviourProgram.h"
 class InputController {
 public:
  void begin();
@@ -8,7 +8,7 @@ public:
  bool pollEvent(InputEvent& event);
 private:
  bool readTouch() const;
- bool raw_ = false, stable_ = false, held_ = false;
+ bool raw_ = false, stable_ = false, held_ = false, releasePending_ = false;
  uint32_t changedAt_ = 0, pressedAt_ = 0;
  InputEvent pending_ = InputEvent::NONE;
 };

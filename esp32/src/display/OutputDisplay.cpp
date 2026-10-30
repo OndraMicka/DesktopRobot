@@ -9,11 +9,25 @@ bool OutputDisplay::begin() {
  ready_=display_.begin();
  return ready_;
 }
-void OutputDisplay::playAnimation(AnimationId id) {
+void OutputDisplay::play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit) {
  if (!ready_ || error_) return;
- const auto& animation=getAnimation(id);
- player_.play(animation,millis()); dirty_=true; completionLogged_=false;
+ player_.play(animation, limit); lastUpdate_=now; dirty_=true; completionLogged_=false;
  Serial.printf("[ANIM] %s\n",animation.name);
+}
+void OutputDisplay::playAnimation(AnimationId id, uint32_t now, bool holdExpression) {
+ if (!ready_ || error_) return;
+ const std::size_t limit = holdExpression ? desktoprobot::getExpressionFrameCount(id) : 0;
+ play(getAnimation(id), now, limit);
+}
+void OutputDisplay::playBase(RobotState state, uint32_t now) {
+ if (!ready_ || error_) return;
+ play(desktoprobot::getStateAnimation(static_cast<desktoprobot::RobotState>(state)), now);
+}
+void OutputDisplay::playShakeRecovery(uint32_t now) {
+ if (!ready_ || error_) return;
+ // Capture recovery before replacing the catalog buffer: it starts at the displayed frame.
+ const auto& recovery=desktoprobot::getShakeRecoveryAnimation(player_.frame());
+ play(recovery, now);
 }
 void OutputDisplay::render() {
  framebuffer_.clear(); desktoprobot::drawFrame(player_.frame(),framebuffer_);
@@ -28,7 +42,9 @@ void OutputDisplay::render() {
 }
 void OutputDisplay::update(uint32_t now) {
  if (!ready_ || error_) return;
- dirty_=player_.update(now) || dirty_;
+ const auto* previous=&player_.frame();
+ player_.update(now-lastUpdate_); lastUpdate_=now;
+ dirty_=previous!=&player_.frame() || dirty_;
  if (player_.isFinished() && !completionLogged_) {
   Serial.println("[ANIM] finished"); completionLogged_=true;
  }
@@ -36,6 +52,6 @@ void OutputDisplay::update(uint32_t now) {
 }
 void OutputDisplay::showErrorFace() {
  if (!ready_ || error_) return;
- player_.play(getAnimation(AnimationId::ERROR_FACE),millis());
+ player_.play(getErrorAnimation());
  error_=true; render();
 }

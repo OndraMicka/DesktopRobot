@@ -1,12 +1,13 @@
-#include "AnimationCatalog.h"
-#include "Poses.h"
-namespace {
-using namespace desktoprobot;
-constexpr DrawCommand smile[] = {
- line(21,28,28,22), line(28,22,40,22), line(40,22,47,28),
- line(81,28,88,22), line(88,22,100,22), line(100,22,107,28),
- line(48,46,56,52), line(56,52,72,52), line(72,52,80,46)
+#include "SmileAnimation.h"
+namespace desktoprobot {
+void SmileAnimation::build(animationdata::AnimationStorage& storage) {
+using namespace animationdata;
+auto add = [&](const char* label, const std::array<Pose,7>& poses, std::array<uint32_t,7> durations, std::size_t count=3) {
+for(std::size_t i=0;i<count;++i) durations[i]+=durations[i]/2;
+createAnimation(storage,label,poses,durations,count);
 };
-constexpr Frame frames[] = {poses::frame(100,poses::idle), poses::frame(1200,smile), poses::frame(150,poses::idle)};
+add("SMILE", {
+                neutral, happy, shifted(happy, 0, -1), happy, neutral
+            }, { 320, 750, 650, 900, 320 }, 5);
 }
-const desktoprobot::Animation smileAnimation = {"SMILE",frames,3,false};
+}

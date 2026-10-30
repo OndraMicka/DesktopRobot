@@ -1,3 +1,2 @@
-// Reuse hardware-independent primitives; no SDL or PC animation player.
-#include "../../../testing/simulator/src/Framebuffer.cpp"
-#include "../../../testing/simulator/src/animation/Animation.cpp"
+// Graphics implementations are compiled directly from this directory.
+#include "SharedGraphics.h"

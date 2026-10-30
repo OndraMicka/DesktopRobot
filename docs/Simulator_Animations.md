@@ -1,6 +1,7 @@
 # Animace simulátoru
 
-Seznam podle `testing/simulator/src/animation/TestAnimations.cpp`.
+Definice simulátoru jsou v `testing/simulator/src/animation/TestAnimations.cpp`.
+Firmware má samostatné třídy jednotlivých animací v `esp32/src/display/animations/`.
 
 ## Animace pro stav IDLE
 
