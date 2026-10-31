@@ -1,16 +1,38 @@
 #include "InputController.h"
 #include "../config/Pins.h"
 #include <Arduino.h>
+#ifdef ARDUINO
+namespace { portMUX_TYPE touchMux = portMUX_INITIALIZER_UNLOCKED; }
+#endif
 bool InputController::readTouch() const { return (digitalRead(Pins::TOUCH)==HIGH)==Pins::TOUCH_ACTIVE_HIGH; }
 void InputController::begin() {
  pinMode(Pins::TOUCH,INPUT);
- raw_=stable_=readTouch(); held_=false; releasePending_=false; pending_=InputEvent::NONE;
+ edgeRead_=0; edgeWrite_=0; eventRead_=eventWrite_=0;
+ raw_=stable_=readTouch(); held_=false;
  changedAt_=pressedAt_=millis();
+ attachInterruptArg(digitalPinToInterrupt(Pins::TOUCH),onEdge,this,CHANGE);
 }
-void InputController::update(uint32_t now) {
- if (releasePending_) { pending_=InputEvent::RELEASE; releasePending_=false; Serial.println("[EVENT] RELEASE"); }
- const bool sample=readTouch();
- if (sample!=raw_) { raw_=sample; changedAt_=now; }
+void ARDUINO_ISR_ATTR InputController::onEdge(void* context) {
+ auto& input=*static_cast<InputController*>(context);
+#ifdef ARDUINO
+ portENTER_CRITICAL_ISR(&touchMux);
+#endif
+ const unsigned next=(input.edgeWrite_+1)%QueueSize;
+ if(next!=input.edgeRead_) {
+  input.edges_[input.edgeWrite_]={millis(),(digitalRead(Pins::TOUCH)==HIGH)==Pins::TOUCH_ACTIVE_HIGH};
+  input.edgeWrite_=next;
+ }
+#ifdef ARDUINO
+ portEXIT_CRITICAL_ISR(&touchMux);
+#endif
+}
+void InputController::emit(InputEvent event) {
+ const unsigned next=(eventWrite_+1)%QueueSize;
+ if(next!=eventRead_) { events_[eventWrite_]=event; eventWrite_=next; }
+ const char* names[]={"NONE","TAP","HOLD","RELEASE","SHAKE_START","SHAKE_END"};
+ Serial.printf("[EVENT] %s\n",names[static_cast<unsigned>(event)]);
+}
+void InputController::settle(uint32_t now) {
  if (raw_!=stable_ && now-changedAt_>=Pins::DEBOUNCE_MS) {
   stable_=raw_;
   if (stable_) {
@@ -18,19 +40,42 @@ void InputController::update(uint32_t now) {
    Serial.println("[TOUCH] pressed");
   } else {
    Serial.println("[TOUCH] released");
-   if (!held_) {
-    pending_ = changedAt_-pressedAt_ >= Pins::HOLD_MS ? InputEvent::HOLD : InputEvent::TAP;
-    releasePending_=pending_==InputEvent::HOLD;
-    Serial.println(pending_==InputEvent::HOLD ? "[EVENT] HOLD" : "[EVENT] TAP");
-   } else {
-    pending_=InputEvent::RELEASE; Serial.println("[EVENT] RELEASE");
-   }
+   emit(held_ ? InputEvent::RELEASE : InputEvent::TAP);
   }
  }
  if (stable_ && raw_ && !held_ && now-pressedAt_>=Pins::HOLD_MS) {
-  held_=true; pending_=InputEvent::HOLD; Serial.println("[EVENT] HOLD");
+  held_=true; emit(InputEvent::HOLD);
  }
 }
+void InputController::update(uint32_t now) {
+ Edge batch[QueueSize]; unsigned count=0;
+#ifdef ARDUINO
+ portENTER_CRITICAL(&touchMux);
+#endif
+ // Capture time and edges together so a later interrupt cannot make debounce
+ // advance past an edge that has not yet been processed.
+#ifdef ARDUINO
+ now=millis();
+#endif
+ while(edgeRead_!=edgeWrite_) {
+  batch[count++]=edges_[edgeRead_]; edgeRead_=(edgeRead_+1)%QueueSize;
+ }
+ const bool sample=readTouch();
+#ifdef ARDUINO
+ portEXIT_CRITICAL(&touchMux);
+#endif
+ for(unsigned i=0;i<count;++i) {
+  // Settle the PREVIOUS level before installing the next edge. A complete
+  // short press must survive even when no loop ran between its two edges.
+  settle(batch[i].at);
+  if(batch[i].pressed!=raw_) { raw_=batch[i].pressed; changedAt_=batch[i].at; }
+ }
+ // Also reconcile the pin level after startup or an overflowing edge queue.
+ if(sample!=raw_) { settle(now); raw_=sample; changedAt_=now; }
+ settle(now);
+}
 bool InputController::pollEvent(InputEvent& event) {
- event=pending_; pending_=InputEvent::NONE; return event!=InputEvent::NONE;
+ if(eventRead_==eventWrite_) { event=InputEvent::NONE; return false; }
+ event=events_[eventRead_]; eventRead_=(eventRead_+1)%QueueSize;
+ return true;
 }

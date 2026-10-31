@@ -112,7 +112,12 @@ software can inject events through `Robot::handleEvent` and the simulator.
 
 `BehaviourConfig` contains per-state decision intervals, blink intervals,
 activity weights/cooldowns, quiet weight, temporary duration and random seed.
-Default decision intervals: IDLE 10-60 s, TIRED 20-90 s, SLEEP 30-120 s.
+Default decision intervals: IDLE 3-8 s, TIRED 5-12 s, SLEEP 12-30 s.
+The quiet outcome has weight 3. Cooldowns: directional looks 5 s, LookAround
+8 s, Thinking/Listening 20 s, Smile/Bored 30 s, RandomCuriosity 15 s,
+IdleYawn 60 s, TiredYawn 18 s, SlowEyeMovement 12 s, SleepZ 15 s,
+SleepEyeOpen 45 s. Animation weights, frame timing and blink intervals are
+unchanged; the previous spontaneous activity remains excluded from the next draw.
 Blink intervals: IDLE 3-7 s, TIRED 6-14 s, no ordinary SLEEP blinking.
 Blinking has a separate timer and does not postpone activity decisions.
 Activities cannot interrupt an interaction. Selection excludes the last chosen
@@ -179,10 +184,31 @@ catalog hashes match the original pre-change catalog.
 ESP32 build, host tests and SDL2 compilation passed. Physical upload, touch/OLED
 verification and interactive GUI checks were not performed.
 
-## Fast touch reactions
+## Touch reactions
 
-TAP/HOLD from TIRED or SLEEP uses TouchWakeAnimation (220 ms), not the full
-wake transition. HOLD then uses TouchLookUpAnimation (200 ms) before Smile.
-RELEASE cancels the remaining friendly sequence immediately and restores the
-appropriate state. HOLD detection remains 700 ms. Full state transitions and
+Touch input is sampled before automatic behavior. From the first sampled press
+through TAP/HOLD classification and release debounce, spontaneous activities
+and blinking are blocked and any current spontaneous animation is interrupted.
+TAP/HOLD and SHAKE_START interrupt spontaneous playback immediately; random
+animations cannot replace a reaction, shaking or its recovery.
+GPIO edges are timestamped in an interrupt and buffered while OLED transfers
+block the loop. Debounce replays those edges in order, preserving complete short
+taps and consecutive TAP/HOLD/RELEASE events instead of overwriting them. There
+is no cooldown after a reaction: a new TAP immediately restarts Angry, including
+when it arrives during the previous reaction or just after its last frame.
+
+TAP is unchanged: IDLE plays Angry; TIRED and SLEEP first use the quick
+TouchWakeAnimation (220 ms), then Angry.
+HOLD in IDLE uses the original complete slow LookUp animation from e88c93c,
+then Smile. TIRED and SLEEP use dedicated TouchLookUpAnimation variants:
+slowly open the half-closed/closed eyes (about 720/1100 ms), then perform the
+same slow upward gaze before Smile. The gaze ends at Smile's neutral starting
+pose, avoiding a visible jump. The Smile expression stays while held.
+After release, HOLD uses the same destination and temporary timers as TAP:
+SLEEP goes to TIRED; TIRED goes to IDLE, subject to the existing pre-07:00 rule.
+RELEASE cancels the remaining friendly sequence. Reactions returning to TIRED
+ease directly from the displayed pose into half-closed eyes (about 360 ms).
+Angry skips its neutral/open-eye ending when returning to TIRED, preventing
+a flash of open eyes. This also works when releasing HOLD during its opening
+or upward gaze. HOLD detection remains 700 ms. Full state transitions and
 scheduled sequences retain their original timing and priority.

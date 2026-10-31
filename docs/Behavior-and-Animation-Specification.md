@@ -253,7 +253,9 @@ Instead, implement an activity scheduler with:
 * A mechanism to prevent two activities from playing simultaneously.
 * The ability to interrupt or cancel an activity when an important event occurs.
 
-As an initial configuration, consider waiting approximately 10–60 seconds between spontaneous activity decisions.
+The current decision intervals are 3–8 seconds in IDLE, 5–12 seconds in TIRED,
+and 12–30 seconds in SLEEP. The quiet outcome has weight 3. Existing animation
+weights, playback timing, blink intervals and the no-immediate-repeat rule remain unchanged.
 
 These values should be configurable and adjustable after testing.
 
@@ -450,11 +452,11 @@ Sequence:
 
 Sequence:
 
-1. Look upward.
-2. Show a sleepy or gentle smile.
+1. Use a dedicated TIRED hold animation to slowly open the half-closed eyes, then look upward with the original slow gaze timing.
+2. Continue seamlessly into Smile.
 3. Play a pleasant sound.
 4. Maintain the expression while the touch is held.
-5. When the touch is released, return to TIRED.
+5. When the touch is released, enter IDLE with the same temporary wake-up timer as TAP (except the existing early-morning rule).
 
 The interaction must not reset the sleep schedule.
 
@@ -463,7 +465,7 @@ The interaction must not reset the sleep schedule.
 Sequence:
 
 1. Interrupt the sleeping animation.
-2. Slowly wake up.
+2. Use a dedicated SLEEP hold animation to slowly open the closed eyes (slower than TIRED); do not use the quick TAP opening.
 3. Look upward toward the touch sensor.
 4. Show a friendly smile.
 5. Play a pleasant short tone or melody.

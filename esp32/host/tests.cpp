@@ -14,10 +14,13 @@ struct FakeOutput : AnimationOutput {
     unsigned bases = 0, recoveries = 0;
     void playAnimation(AnimationId id, uint32_t, bool held = false) override { history.push_back(id); done=false; hold=held; }
     unsigned openings=0;
+    RobotState gazeSource=RobotState::IDLE;
     void playTouchWake(RobotState,uint32_t) override { ++openings; done=false; }
-    void playTouchLookUp(uint32_t now) override { playAnimation(AnimationId::LookUp,now); }
+    void playTouchLookUp(RobotState source,uint32_t now) override { gazeSource=source; playAnimation(AnimationId::LookUp,now); }
     void playBase(RobotState s, uint32_t) override { baseState=s; ++bases; done=false; }
     void playShakeRecovery(uint32_t) override { ++recoveries; done=false; }
+    unsigned returns=0;
+    void playTouchReturn(uint32_t) override { ++returns; done=false; }
     bool isAnimationFinished() const override { return done; }
     void showErrorFace() override { error=true; }
     AnimationId last() const { assert(!history.empty()); return history.back(); }
@@ -28,6 +31,7 @@ void complete(BehaviourProgram& b, FakeOutput& o, uint32_t& now, LocalTime time=
     assert(!b.busy());
 }
 void reset() {
+    testTouchInterrupt=nullptr; testTouchContext=nullptr;
     testNow=0; testPin=0; testReads=0; Serial.log.clear();
     Serial.rx.clear(); Serial.rxPosition=0; Serial.txCapacity=64;
     Wire.busOK=true; Wire.ack=0; displayOK=true; sentFrames=0; errorTextDrawn=false;
@@ -40,6 +44,16 @@ void expect(InputController& input,InputEvent expected) {
 }
 void testConsole();
 void testNtpSchedule();
+void verifyTouchReturn(const desktoprobot::Frame& frame) {
+    desktoprobot::Framebuffer released, start, end, tired;
+    desktoprobot::drawFrame(frame,released);
+    const auto& recovery=desktoprobot::getTouchReturnAnimation(frame);
+    assert(!recovery.loop && recovery.frameCount>1);
+    desktoprobot::drawFrame(recovery.frames[0],start);
+    desktoprobot::drawFrame(recovery.frames[recovery.frameCount-1],end);
+    desktoprobot::drawFrame(desktoprobot::getStateAnimation(desktoprobot::RobotState::Tired).frames[0],tired);
+    assert(released.data()==start.data() && end.data()==tired.data());
+}
 int main() {
     reset(); InputController input; input.begin();
     tick(input,10,1); tick(input,25,0); tick(input,70,0); expect(input,InputEvent::NONE);
@@ -49,9 +63,27 @@ int main() {
     tick(input,2500,1); expect(input,InputEvent::NONE);
     tick(input,2600,0); tick(input,2635,0); expect(input,InputEvent::RELEASE);
     tick(input,3000,1); tick(input,3035,1); tick(input,3699,0); tick(input,3734,0); expect(input,InputEvent::TAP);
-    tick(input,5000,1); tick(input,5035,1); tick(input,6100,0); tick(input,6135,0); expect(input,InputEvent::HOLD);
+    tick(input,5000,1); tick(input,5035,1); tick(input,6100,0); expect(input,InputEvent::HOLD);
     // Even a threshold missed by a slow loop must provide HOLD then RELEASE.
-    tick(input,6200,0); expect(input,InputEvent::RELEASE);
+    tick(input,6135,0); expect(input,InputEvent::RELEASE);
+    tick(input,6200,0); expect(input,InputEvent::NONE);
+    // Multiple complete taps during a blocked display update retain their
+    // original timing and are delivered in order, without a repeat lockout.
+    reset(); input.begin();
+    testTouchEdge(100,1); testTouchEdge(180,0);
+    testTouchEdge(240,1); testTouchEdge(330,0);
+    testTouchEdge(400,1); testTouchEdge(490,0);
+    assert(input.touchPending()); input.update(600);
+    InputEvent queued;
+    for(unsigned i=0;i<3;++i) { assert(input.pollEvent(queued) && queued==InputEvent::TAP); }
+    expect(input,InputEvent::NONE);
+    // Debounce still rejects noise and preserves a short tap near HOLD's threshold.
+    testTouchEdge(700,1); testTouchEdge(710,0); testNow=750; input.update(testNow); expect(input,InputEvent::NONE);
+    testTouchEdge(800,1); testTouchEdge(1499,0); testNow=1550; input.update(testNow); expect(input,InputEvent::TAP);
+    // HOLD and RELEASE cannot overwrite one another in a delayed loop.
+    testTouchEdge(1600,1); testTouchEdge(2400,0); testNow=2500; input.update(testNow);
+    assert(input.pollEvent(queued) && queued==InputEvent::HOLD);
+    assert(input.pollEvent(queued) && queued==InputEvent::RELEASE); expect(input,InputEvent::NONE);
     testNow=UINT32_MAX-500; testPin=1; input.begin(); tick(input,199,1); expect(input,InputEvent::HOLD);
 
     // All six transitions select exact catalog identifiers and preserve destinations.
@@ -88,22 +120,27 @@ int main() {
         if(state==RobotState::IDLE) assert(out.last()==AnimationId::Angry);
         if(state==RobotState::TIRED) assert(out.openings==1);
         if(state==RobotState::SLEEP) assert(out.openings==1);
+        if(state!=RobotState::IDLE) { out.done=true; brain.update(++t); }
+        assert(out.last()==AnimationId::Angry);
+        assert(out.hold==(state==RobotState::SLEEP));
         complete(brain,out,t);
         assert(brain.state()==(state==RobotState::SLEEP ? RobotState::TIRED : RobotState::IDLE));
     }
     for (auto state : {RobotState::IDLE,RobotState::TIRED,RobotState::SLEEP}) {
         FakeOutput out; BehaviourProgram brain(out); brain.enableSpontaneous(false); uint32_t t=0; brain.begin();
         brain.setState(state); complete(brain,out,t); brain.handleEvent(InputEvent::HOLD);
+        assert(out.openings==0 && out.last()==AnimationId::LookUp && out.gazeSource==state);
         for(unsigned i=0;i<5;++i) { out.done=true; brain.update(++t); }
         assert(out.last()==AnimationId::Smile && out.hold && brain.busy());
-        auto count=out.history.size(); out.done=true; brain.update(t+100000); assert(out.history.size()==count);
-        brain.handleEvent(InputEvent::RELEASE); assert(!brain.busy());
-        assert(brain.state()==(state==RobotState::SLEEP ? RobotState::TIRED : state));
+        auto count=out.history.size(); out.done=true; t+=100000; brain.update(t); assert(out.history.size()==count);
+        brain.handleEvent(InputEvent::RELEASE);
+        assert(out.returns==(state==RobotState::SLEEP ? 1U : 0U)); complete(brain,out,t);
+        assert(brain.state()==(state==RobotState::SLEEP ? RobotState::TIRED : RobotState::IDLE));
     }
-    // Release during wake-up finishes the reaction once, without restarting the wake animation.
+    // Release during the slow hold gesture cancels the remaining smile.
     { FakeOutput out; BehaviourProgram brain(out); uint32_t t=0; brain.begin(); brain.setState(RobotState::SLEEP); complete(brain,out,t);
       out.history.clear(); brain.handleEvent(InputEvent::HOLD); brain.handleEvent(InputEvent::RELEASE); complete(brain,out,t);
-      assert(out.history.empty() && out.openings==1); }
+      assert(out.history.size()==1 && out.last()==AnimationId::LookUp && out.openings==0); }
     // A second interaction during opening changes the tail without restarting wake-up.
     { FakeOutput out; BehaviourProgram brain(out); uint32_t t=0; brain.begin(); brain.setState(RobotState::SLEEP); complete(brain,out,t);
       out.history.clear(); brain.handleEvent(InputEvent::TAP); brain.handleEvent(InputEvent::HOLD);
@@ -114,19 +151,54 @@ int main() {
     { FakeOutput out; BehaviourProgram brain(out); brain.begin(); brain.preview(AnimationId::Thinking);
       brain.handleEvent(InputEvent::TAP); assert(out.last()==AnimationId::Angry);
       brain.preview(AnimationId::LookAround); brain.handleEvent(InputEvent::HOLD); assert(out.last()==AnimationId::LookUp); }
+    // A pending press blocks due random activity AND blinking before it can be
+    // classified. Reactions then keep priority even with every timer overdue.
+    for(auto event:{InputEvent::TAP,InputEvent::HOLD,InputEvent::SHAKE_START}) {
+      FakeOutput out; BehaviourConfig c;
+      c.activityMinMs[0]=c.activityMaxMs[0]=100;
+      c.blinkMinMs[0]=c.blinkMaxMs[0]=50; c.quietWeight=0;
+      BehaviourProgram brain(out,c); brain.begin(); brain.setTouchPending(true);
+      brain.update(100); assert(!brain.busy() && out.history.empty());
+      brain.setTouchPending(false); brain.handleEvent(event);
+      const auto expected=event==InputEvent::TAP ? AnimationId::Angry : event==InputEvent::HOLD ? AnimationId::LookUp : AnimationId::Shaking;
+      assert(out.last()==expected); const auto count=out.history.size();
+      brain.update(100000); assert(out.history.size()==count && out.last()==expected);
+    }
+    // All classified interactions interrupt an active blink or random activity.
+    for(auto event:{InputEvent::TAP,InputEvent::HOLD,InputEvent::SHAKE_START}) {
+      for(bool blink:{false,true}) {
+        FakeOutput out; BehaviourConfig c;
+        c.activityMinMs[0]=c.activityMaxMs[0]=blink ? 10000 : 100;
+        c.blinkMinMs[0]=c.blinkMaxMs[0]=blink ? 100 : 10000; c.quietWeight=0;
+        BehaviourProgram brain(out,c); brain.begin(); brain.update(100); assert(brain.busy());
+        brain.handleEvent(event);
+        assert(out.last()==(event==InputEvent::TAP ? AnimationId::Angry : event==InputEvent::HOLD ? AnimationId::LookUp : AnimationId::Shaking));
+      }
+    }
+    // Even the first raw press sample cancels an existing blink before HOLD.
+    { FakeOutput out; BehaviourConfig c; c.blinkMinMs[0]=c.blinkMaxMs[0]=100;
+      BehaviourProgram brain(out,c); brain.begin(); brain.update(100); assert(out.last()==AnimationId::Blink);
+      brain.setTouchPending(true); brain.update(101); assert(!brain.busy());
+      brain.update(100000); assert(!brain.busy() && out.history.size()==1); }
     // Early waking cannot expire back to sleep before 07:00.
     { FakeOutput out; BehaviourProgram brain(out); brain.enableSpontaneous(false); uint32_t t=0;
       brain.begin(t,clockAt(6)); complete(brain,out,t,clockAt(6)); brain.handleEvent(InputEvent::TAP); complete(brain,out,t,clockAt(6));
       assert(brain.state()==RobotState::TIRED); brain.update(t+600000,clockAt(6,10)); assert(brain.state()==RobotState::TIRED);
       brain.update(t+3600000,clockAt(7)); assert(brain.state()==RobotState::IDLE && out.last()==AnimationId::TiredToIdle); }
-    // Night waking expires after five minutes; TIRED tap expires in two stages.
+    // TAP and HOLD use the same temporary waking timers.
+    for(auto event:{InputEvent::TAP,InputEvent::HOLD}) {
     { FakeOutput out; BehaviourProgram brain(out); brain.enableSpontaneous(false); uint32_t t=0;
-      brain.begin(t,clockAt(22)); complete(brain,out,t,clockAt(22)); brain.handleEvent(InputEvent::TAP); complete(brain,out,t,clockAt(22));
+      brain.begin(t,clockAt(22)); complete(brain,out,t,clockAt(22)); brain.handleEvent(event);
+      if(event==InputEvent::HOLD) brain.handleEvent(InputEvent::RELEASE);
+      complete(brain,out,t,clockAt(22)); assert(brain.state()==RobotState::TIRED);
       brain.update(t+300000,clockAt(22,5)); assert(brain.state()==RobotState::SLEEP); }
     { FakeOutput out; BehaviourProgram brain(out); brain.enableSpontaneous(false); uint32_t t=0;
-      brain.begin(t,clockAt(21,5)); complete(brain,out,t,clockAt(21,5)); brain.handleEvent(InputEvent::TAP); complete(brain,out,t,clockAt(21,5));
+      brain.begin(t,clockAt(21,5)); complete(brain,out,t,clockAt(21,5)); brain.handleEvent(event);
+      if(event==InputEvent::HOLD) brain.handleEvent(InputEvent::RELEASE);
+      complete(brain,out,t,clockAt(21,5)); assert(brain.state()==RobotState::IDLE);
       brain.update(t+300000,clockAt(21,10)); assert(brain.state()==RobotState::TIRED);
       t+=300000; complete(brain,out,t,clockAt(21,10)); brain.update(t+300000,clockAt(21,15)); assert(brain.state()==RobotState::SLEEP); }
+    }
     // Schedule overrides a held interaction; subsequent release cannot restore its old state.
     { FakeOutput out; BehaviourProgram brain(out); uint32_t t=0; brain.begin(t,clockAt(20,59)); brain.handleEvent(InputEvent::HOLD);
       brain.update(++t,clockAt(21)); assert(out.last()==AnimationId::IdleToTired);
@@ -184,21 +256,64 @@ int main() {
       p.play(animation); p.update(duration-1); assert(!p.isFinished()); p.update(1); assert(p.isFinished());
       const auto* last=&p.frame(); p.update(UINT32_MAX); assert(&p.frame()==last);
       p.play(desktoprobot::getStateAnimation(desktoprobot::RobotState::Idle)); p.update(UINT32_MAX); assert(!p.isFinished()); }
-    // RELEASE during the short LOOK_UP cancels the remaining smile in every state.
+    // RELEASE during the slow LOOK_UP cancels the remaining smile in every state.
     for(auto state:{RobotState::IDLE,RobotState::TIRED,RobotState::SLEEP}) {
       FakeOutput out; BehaviourProgram brain(out); uint32_t t=0; brain.begin();
       brain.setState(state); complete(brain,out,t); brain.handleEvent(InputEvent::HOLD);
-      if(state!=RobotState::IDLE) { out.done=true; brain.update(t+=220); }
       assert(out.last()==AnimationId::LookUp);
       auto size=out.history.size(); brain.handleEvent(InputEvent::RELEASE);
-      assert(!brain.busy() && out.history.size()==size);
-      assert(brain.state()==(state==RobotState::SLEEP ? RobotState::TIRED : state));
+      complete(brain,out,t); assert(out.history.size()==size);
+      assert(brain.state()==(state==RobotState::SLEEP ? RobotState::TIRED : RobotState::IDLE));
     }
-    // Quick wake and gaze timing are exact and independent of update frequency.
+    // TAP retains its exact quick wake timing.
     for(auto state:{RobotState::TIRED,RobotState::SLEEP}) {
       reset(); OutputDisplay d; assert(d.begin()); d.playTouchWake(state,0);
       d.update(219); assert(!d.isAnimationFinished()); d.update(220); assert(d.isAnimationFinished());
-      d.playTouchLookUp(220); d.update(419); assert(!d.isAnimationFinished()); d.update(420); assert(d.isAnimationFinished());
+    }
+    // Every hold starts at its source face, opens before gazing upward, then
+    // joins the unchanged original gaze and the neutral start of Smile exactly.
+    for(auto state:{RobotState::IDLE,RobotState::TIRED,RobotState::SLEEP}) {
+      reset(); OutputDisplay d; assert(d.begin());
+      desktoprobot::Framebuffer expectedStart, expectedEnd;
+      desktoprobot::drawFrame(desktoprobot::getStateAnimation(static_cast<desktoprobot::RobotState>(state)).frames[0],expectedStart);
+      desktoprobot::drawFrame(getAnimation(AnimationId::Smile).frames[0],expectedEnd);
+      d.playTouchLookUp(state,0);
+      const auto& gesture=*d.currentAnimation();
+      desktoprobot::Framebuffer actualStart, actualEnd;
+      desktoprobot::drawFrame(gesture.frames[0],actualStart);
+      desktoprobot::drawFrame(gesture.frames[gesture.frameCount-1],actualEnd);
+      assert(actualStart.data()==expectedStart.data() && actualEnd.data()==expectedEnd.data());
+      uint32_t duration=0;
+      for(std::size_t i=0;i<gesture.frameCount;++i) { assert(gesture.frames[i].durationMs>0); duration+=gesture.frames[i].durationMs; }
+      const std::size_t offset=state==RobotState::IDLE ? 0 : 8;
+      // Save frames before requesting another animation: ESP32 reuses buffers.
+      std::vector<desktoprobot::Framebuffer> gazeFrames;
+      std::vector<uint32_t> gazeDurations;
+      for(std::size_t i=offset;i<gesture.frameCount;++i) {
+        desktoprobot::Framebuffer frame; desktoprobot::drawFrame(gesture.frames[i],frame);
+        gazeFrames.push_back(frame); gazeDurations.push_back(gesture.frames[i].durationMs);
+      }
+      d.update(duration-1); assert(!d.isAnimationFinished());
+      d.update(duration); assert(d.isAnimationFinished() && d.framebuffer().data()==expectedEnd.data());
+      assert(duration>2000 && (state==RobotState::IDLE || duration>2700));
+      // The suffix has exactly the historical LookUp frame count.
+      assert(gesture.frameCount-offset==33);
+      const auto& original=getAnimation(AnimationId::LookUp);
+      assert(original.frameCount==gazeFrames.size());
+      for(std::size_t i=0;i<original.frameCount;++i) {
+        desktoprobot::Framebuffer expected; desktoprobot::drawFrame(original.frames[i],expected);
+        assert(expected.data()==gazeFrames[i].data() && original.frames[i].durationMs==gazeDurations[i]);
+      }
+    }
+    // Returning to TIRED starts at the exact displayed pixels, even when HOLD
+    // is released halfway through opening, gazing or smiling.
+    for(auto id:{AnimationId::Angry,AnimationId::Smile}) {
+      for(std::size_t i=0;i<desktoprobot::getExpressionFrameCount(id);++i)
+        verifyTouchReturn(getAnimation(id).frames[i]);
+    }
+    for(auto source:{desktoprobot::RobotState::Tired,desktoprobot::RobotState::Sleep}) {
+      for(std::size_t i=0;i<41;++i) verifyTouchReturn(getTouchWakeAnimation(source,true).frames[i]);
+      for(std::size_t i=0;i<9;++i) verifyTouchReturn(getTouchWakeAnimation(source).frames[i]);
     }
     // Hardware output holds a real smiling frame and recovery starts with identical pixels.
     reset(); OutputDisplay display; assert(display.begin());
@@ -289,6 +404,39 @@ void testConsole() {
     testPin=0; physical.update(); testNow+=35; physical.update(); pump(physical);
     assert(status(physical).find("animation=ANGRY")!=std::string::npos);
     assert(Serial.log.find("[EVENT] TAP received")!=std::string::npos);
+    // A complete tap between loop iterations is accepted during ANGRY and
+    // immediately after its end, restarting the reaction without a dead zone.
+    reset(); Robot repeated; assert(repeated.begin()); pump(repeated);
+    const auto shortTap=[&]() {
+      const auto at=testNow+1;
+      testTouchEdge(at,1); testTouchEdge(at+80,0);
+      testNow=at+120; repeated.update(); pump(repeated);
+    };
+    shortTap(); assert(occurrences(Serial.log,"started ANGRY")==1);
+    shortTap(); assert(occurrences(Serial.log,"started ANGRY")==2);
+    for(unsigned i=0;i<100 && status(repeated).find("mode=REACTION")!=std::string::npos;++i) advance(repeated,50);
+    assert(status(repeated).find("mode=BASE")!=std::string::npos);
+    shortTap(); assert(occurrences(Serial.log,"started ANGRY")==3);
+    assert(status(repeated).find("animation=ANGRY")!=std::string::npos);
+    // Physical press wins both on the exact tick a blink becomes due and
+    // while a blink is already playing; release still delivers a full ANGRY.
+    for(bool alreadyBlinking:{false,true}) {
+      reset(); Robot priority; assert(priority.begin()); pump(priority);
+      testNow=6000;
+      if(alreadyBlinking) {
+        priority.update(); assert(status(priority).find("animation=BLINK")!=std::string::npos);
+        pump(priority); // Drain the buffered start log before counting new blinks.
+        ++testNow;
+      }
+      const auto blinks=occurrences(Serial.log,"started BLINK");
+      testPin=1; priority.update();
+      assert(status(priority).find("animation=IDLE")!=std::string::npos);
+      testNow+=35; priority.update(); testNow+=100;
+      testPin=0; priority.update(); testNow+=35; priority.update(); pump(priority);
+      assert(status(priority).find("animation=ANGRY")!=std::string::npos);
+      advance(priority,500); assert(status(priority).find("animation=ANGRY")!=std::string::npos);
+      assert(occurrences(Serial.log,"started BLINK")==blinks);
+    }
     reset(); Wire.ack=2; Robot error; assert(!error.begin()); pump(error);
     const auto reads=testReads;
     for(const auto& line:{"help","status","state","diag","wake","tired","sleep","tap","hold","release","shake 3000","time 07:00","time auto"}) command(error,line);

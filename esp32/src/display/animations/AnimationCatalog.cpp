@@ -27,6 +27,7 @@
 #include "IdleAnimation.h"
 #include "TiredAnimation.h"
 #include "SleepAnimation.h"
+#include "TouchAnimationBuilder.h"
 // CODEX TEST
  #include "TestAnimations.h"
 
@@ -175,6 +176,24 @@ default: break;
         return getTestAnimation(TestAnimationId::Dizzy);
     }
 
+    const Animation& getTouchReturnAnimation(const Frame& releaseFrame)
+    {
+        if (const auto* custom = tryTouchReturn(releaseFrame)) return *custom;
+        Pose start = neutral;
+#ifdef ROBOT_COMPACT_ANIMATIONS
+        for (std::size_t i = 0; i < activeStorage.animation.frameCount; ++i)
+            if (&releaseFrame == &activeStorage.frames[i]) { start = activeStorage.poses[i]; break; }
+        auto& recovery = activeStorage;
+#else
+        for (const auto& source : getAnimations())
+            for (std::size_t i = 0; i < source.animation.frameCount; ++i)
+                if (&releaseFrame == &source.frames[i]) start = source.poses[i];
+        static AnimationStorage recovery;
+#endif
+        createAnimation(recovery, "TOUCH RETURN TIRED", {start, tired}, {360, 1}, 2);
+        return recovery.animation;
+    }
+
     const AnimationTestDefinition* getStateTransition(RobotState from, RobotState to)
     {
         for (const auto& definition : animationTests)
@@ -218,4 +237,4 @@ const desktoprobot::Animation& getErrorAnimation() { return desktoprobot::ErrorF
 
 #include "TouchWakeAnimation.h"
 #include "TouchLookUpAnimation.h"
-const desktoprobot::Animation& getTouchWakeAnimation(desktoprobot::RobotState source,bool lookUp) { return lookUp ? desktoprobot::TouchLookUpAnimation::get() : desktoprobot::TouchWakeAnimation::get(source); }
+const desktoprobot::Animation& getTouchWakeAnimation(desktoprobot::RobotState source,bool lookUp) { return lookUp ? desktoprobot::TouchLookUpAnimation::get(source) : desktoprobot::TouchWakeAnimation::get(source); }

@@ -1,5 +1,6 @@
 // CODEX TEST
  #include "TestAnimations.h"
+#include "../../../../esp32/src/display/animations/TouchAnimationBuilder.h"
 
 #include <algorithm>
 #include <array>
@@ -599,6 +600,19 @@ namespace desktoprobot
             }
         }
         return getTestAnimation(TestAnimationId::Dizzy);
+    }
+
+    const Animation& getTouchReturnAnimation(const Frame& releaseFrame)
+    {
+        if (const auto* custom = tryTouchReturn(releaseFrame)) return *custom;
+        Pose start = neutral;
+        for (const auto& source : getAnimations())
+            for (std::size_t i = 0; i < source.animation.frameCount; ++i)
+                if (&releaseFrame == &source.frames[i]) start = source.poses[i];
+        static AnimationStorage recovery;
+        recovery = createAnimation("TOUCH RETURN TIRED", {start, tired}, {360, 1}, 2);
+        rebindAnimationStorage(recovery);
+        return recovery.animation;
     }
 
     const AnimationTestDefinition* getStateTransition(RobotState from, RobotState to)

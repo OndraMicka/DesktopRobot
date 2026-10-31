@@ -30,6 +30,9 @@ void OutputDisplay::playShakeRecovery(uint32_t now) {
  const auto& recovery=desktoprobot::getShakeRecoveryAnimation(player_.frame());
  play(recovery, now);
 }
+void OutputDisplay::playTouchReturn(uint32_t now) {
+ if (ready_ && !error_) play(desktoprobot::getTouchReturnAnimation(player_.frame()),now);
+}
 void OutputDisplay::render() {
  framebuffer_.clear(); desktoprobot::drawFrame(player_.frame(),framebuffer_);
  display_.clearBuffer();
@@ -63,4 +66,4 @@ void OutputDisplay::report(const char* message) {
 }
 
 void OutputDisplay::playTouchWake(RobotState source,uint32_t now) { if(ready_ && !error_) play(getTouchWakeAnimation(static_cast<desktoprobot::RobotState>(source)),now); }
-void OutputDisplay::playTouchLookUp(uint32_t now) { if(ready_ && !error_) play(getTouchWakeAnimation(desktoprobot::RobotState::Idle,true),now); }
+void OutputDisplay::playTouchLookUp(RobotState source,uint32_t now) { if(ready_ && !error_) play(getTouchWakeAnimation(static_cast<desktoprobot::RobotState>(source),true),now); }

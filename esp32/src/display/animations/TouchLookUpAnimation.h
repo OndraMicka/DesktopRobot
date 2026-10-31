@@ -1,3 +1,3 @@
 #pragma once
-#include "../Animation.h"
-namespace desktoprobot { class TouchLookUpAnimation { public: static const Animation& get(); }; }
+#include "TestAnimations.h"
+namespace desktoprobot { class TouchLookUpAnimation { public: static const Animation& get(RobotState source); }; }

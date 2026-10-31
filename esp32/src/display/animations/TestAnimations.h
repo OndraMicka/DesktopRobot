@@ -57,9 +57,10 @@ namespace desktoprobot
     const Animation& getTestAnimation(TestAnimationId id);
     // Prefix ending at the established gaze/smile pose, before its neutral return.
     constexpr std::size_t getExpressionFrameCount(TestAnimationId id) {
-        return id == TestAnimationId::LookUp ? 9 : id == TestAnimationId::Smile ? 25 : 0;
+        return id == TestAnimationId::LookUp ? 9 : id == TestAnimationId::Smile ? 25 : id == TestAnimationId::Angry ? 17 : 0;
     }
     const Animation& getShakeRecoveryAnimation(const Frame& releaseFrame);
+    const Animation& getTouchReturnAnimation(const Frame& releaseFrame);
     const AnimationTestDefinition* getStateTransition(RobotState from, RobotState to);
     const Animation& getStateAnimation(RobotState state);
     const char* getStateName(RobotState state);

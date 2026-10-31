@@ -114,6 +114,9 @@ void BehaviourProgram::handleEvent(InputEvent event) {
     if (event != InputEvent::TAP && event != InputEvent::HOLD) return;
     const bool wasOpening=quickWake_;
     const auto origin=state_;
+    // A quick tap opening already ends at neutral: do not close the eyes again
+    // if a hold replaces its reaction tail.
+    reactionSource_ = wasOpening ? RobotState::IDLE : origin;
     returnState_ = origin;
     held_ = event == InputEvent::HOLD;
     AnimationId ids[4]; unsigned count = 0;
@@ -123,14 +126,14 @@ void BehaviourProgram::handleEvent(InputEvent event) {
     if (origin == RobotState::SLEEP) {
         returnState_ = RobotState::TIRED;
         temporary_ = local_.valid && local_.second < 7*3600 ? Temporary::Early : Temporary::TiredThenSleep;
-    } else if (origin == RobotState::TIRED && !held_) {
+    } else if (origin == RobotState::TIRED) {
         if (temporary_ != Temporary::Early) {
             returnState_ = RobotState::IDLE;
             temporary_ = Temporary::IdleThenTired;
         }
     }
     output_.interactionSound(held_);
-    if (origin!=RobotState::IDLE) {
+    if (origin!=RobotState::IDLE && (!held_ || wasOpening)) {
         mode_=Mode::Reaction; sequenceCount_=count; sequenceIndex_=0; holdLast_=held_;
         for(unsigned i=0;i<count;++i) sequence_[i]=ids[i];
         quickWake_=true;
@@ -141,6 +144,11 @@ void BehaviourProgram::finishReaction() {
     if (temporary_ == Temporary::Early) returnState_ = RobotState::TIRED;
     if (state_ != returnState_) temporaryStart_ = now_;
     state_ = returnState_;
+    if (state_ == RobotState::TIRED) {
+        mode_ = Mode::TouchReturn; sequenceCount_ = 0; quickWake_ = false;
+        output_.playTouchReturn(now_);
+        return;
+    }
     base();
 }
 void BehaviourProgram::chooseActivity() {
@@ -173,6 +181,9 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
     now_ = now; local_ = local;
     checkSchedule();
     if (mode_ == Mode::Shake) return;
+    // A press has priority even before its duration distinguishes TAP/HOLD.
+    // Cancel only spontaneous playback; reactions and shake recovery keep theirs.
+    if (touchPending_ && (mode_ == Mode::Activity || mode_ == Mode::Blink)) base();
     if (mode_ != Mode::Base) {
         if (!output_.isAnimationFinished()) return;
         if (quickWake_) { quickWake_=false; playStep(); return; }
@@ -197,7 +208,7 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
         transition(toTired ? RobotState::TIRED : RobotState::SLEEP, Mode::Transition);
         return;
     }
-    if (!spontaneous_) return;
+    if (!spontaneous_ || touchPending_) return;
     if (now_-activityStart_ >= activityDelay_) { chooseActivity(); return; }
     if (state_ != RobotState::SLEEP && now_-blinkStart_ >= blinkDelay_) {
         const auto id = state_ == RobotState::IDLE ? AnimationId::Blink : AnimationId::SlowBlink;
@@ -229,7 +240,7 @@ void BehaviourProgram::changeTime(uint32_t now, LocalTime local, bool restoreSch
     checkSchedule();
 }
 const char* BehaviourProgram::modeName() const {
-    const char* names[] = {"BASE","ACTIVITY","BLINK","REACTION","TRANSITION","SCHEDULE","SHAKE","DIZZY"};
+    const char* names[] = {"BASE","ACTIVITY","BLINK","REACTION","TRANSITION","SCHEDULE","SHAKE","DIZZY","TOUCH_RETURN"};
     return names[static_cast<unsigned>(mode_)];
 }
 const char* BehaviourProgram::temporaryName() const {
@@ -243,6 +254,8 @@ uint32_t BehaviourProgram::temporaryRemainingMs() const {
 }
 
 void BehaviourProgram::playStep() {
- if(mode_==Mode::Reaction && sequence_[sequenceIndex_]==AnimationId::LookUp) output_.playTouchLookUp(now_);
- else output_.playAnimation(sequence_[sequenceIndex_],now_,holdLast_ && sequenceIndex_+1==sequenceCount_);
+ if(mode_==Mode::Reaction && sequence_[sequenceIndex_]==AnimationId::LookUp) output_.playTouchLookUp(reactionSource_,now_);
+ else output_.playAnimation(sequence_[sequenceIndex_],now_,
+     (holdLast_ && sequenceIndex_+1==sequenceCount_) ||
+     (mode_==Mode::Reaction && sequence_[sequenceIndex_]==AnimationId::Angry && returnState_==RobotState::TIRED));
 }

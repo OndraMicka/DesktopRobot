@@ -19,9 +19,10 @@ public:
     virtual ~AnimationOutput() = default;
     virtual void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) = 0;
     virtual void playTouchWake(RobotState source,uint32_t now) = 0;
-    virtual void playTouchLookUp(uint32_t now) = 0;
+    virtual void playTouchLookUp(RobotState source, uint32_t now) = 0;
     virtual void playBase(RobotState state, uint32_t now) = 0;
     virtual void playShakeRecovery(uint32_t now) = 0;
+    virtual void playTouchReturn(uint32_t now) = 0;
     virtual bool isAnimationFinished() const = 0;
     virtual void showErrorFace() = 0;
     virtual void interactionSound(bool /*friendly*/) {}
@@ -35,30 +36,30 @@ struct Activity {
 };
 
 struct BehaviourConfig {
-    uint32_t activityMinMs[3] = {10000, 20000, 30000};
-    uint32_t activityMaxMs[3] = {60000, 90000, 120000};
+    uint32_t activityMinMs[3] = {3000, 5000, 12000};
+    uint32_t activityMaxMs[3] = {8000, 12000, 30000};
     uint32_t blinkMinMs[2] = {3000, 6000};
     uint32_t blinkMaxMs[2] = {7000, 14000};
     uint32_t temporaryMs = 300000;
-    uint16_t quietWeight = 15;
+    uint16_t quietWeight = 3;
     uint32_t randomSeed = 0xA57B19U;
     std::array<Activity, 13> activities{{
-        {AnimationId::LookAround, RobotState::IDLE, 35, 20000},
-        {AnimationId::Thinking, RobotState::IDLE, 10, 60000},
-        {AnimationId::IdleYawn, RobotState::IDLE, 8, 180000},
-        {AnimationId::Smile, RobotState::IDLE, 10, 90000},
-        {AnimationId::RandomCuriosity, RobotState::IDLE, 5, 45000},
-        {AnimationId::Bored, RobotState::IDLE, 5, 90000},
-        {AnimationId::Listening, RobotState::IDLE, 7, 60000},
-        {AnimationId::LookLeft, RobotState::IDLE, 5, 15000},
-        {AnimationId::LookRight, RobotState::IDLE, 5, 15000},
-        {AnimationId::LookUp, RobotState::IDLE, 5, 15000},
-        {AnimationId::TiredYawn, RobotState::TIRED, 35, 45000},
-        {AnimationId::SlowEyeMovement, RobotState::TIRED, 20, 30000},
-        {AnimationId::SleepZ, RobotState::SLEEP, 35, 40000}
+        {AnimationId::LookAround, RobotState::IDLE, 35, 8000},
+        {AnimationId::Thinking, RobotState::IDLE, 10, 20000},
+        {AnimationId::IdleYawn, RobotState::IDLE, 8, 60000},
+        {AnimationId::Smile, RobotState::IDLE, 10, 30000},
+        {AnimationId::RandomCuriosity, RobotState::IDLE, 5, 15000},
+        {AnimationId::Bored, RobotState::IDLE, 5, 30000},
+        {AnimationId::Listening, RobotState::IDLE, 7, 20000},
+        {AnimationId::LookLeft, RobotState::IDLE, 5, 5000},
+        {AnimationId::LookRight, RobotState::IDLE, 5, 5000},
+        {AnimationId::LookUp, RobotState::IDLE, 5, 5000},
+        {AnimationId::TiredYawn, RobotState::TIRED, 35, 18000},
+        {AnimationId::SlowEyeMovement, RobotState::TIRED, 20, 12000},
+        {AnimationId::SleepZ, RobotState::SLEEP, 35, 15000}
     }};
     uint16_t sleepPeekWeight = 5;
-    uint32_t sleepPeekCooldownMs = 120000;
+    uint32_t sleepPeekCooldownMs = 45000;
 };
 
 class BehaviourProgram {
@@ -78,10 +79,11 @@ public:
     uint32_t temporaryRemainingMs() const;
 
     void enableSpontaneous(bool enabled) { spontaneous_ = enabled; }
+    void setTouchPending(bool pending) { touchPending_ = pending; }
     RobotState state() const { return state_; }
     bool busy() const { return mode_ != Mode::Base; }
 private:
-    enum class Mode { Base, Activity, Blink, Reaction, Transition, Schedule, Shake, Dizzy };
+    enum class Mode { Base, Activity, Blink, Reaction, Transition, Schedule, Shake, Dizzy, TouchReturn };
     enum class Temporary { None, IdleThenTired, TiredThenSleep, Early };
     AnimationOutput& output_;
     BehaviourConfig config_;
@@ -90,6 +92,7 @@ private:
     uint32_t rng_ = 0xA57B19U, now_ = 0;
     LocalTime local_{};
     RobotState state_ = RobotState::IDLE, returnState_ = RobotState::IDLE;
+    RobotState reactionSource_ = RobotState::IDLE;
     Mode mode_ = Mode::Base;
     Temporary temporary_ = Temporary::None;
     uint32_t temporaryStart_ = 0, activityStart_ = 0, activityDelay_ = 0, blinkStart_ = 0, blinkDelay_ = 0;
@@ -97,7 +100,7 @@ private:
     std::array<bool, 14> played_{};
     int lastActivity_ = -1;
     int64_t scheduleBoundary_ = 0;
-    bool scheduleKnown_ = false, held_ = false, spontaneous_ = true;
+    bool scheduleKnown_ = false, held_ = false, spontaneous_ = true, touchPending_ = false;
     std::array<AnimationId, 4> sequence_{};
     unsigned sequenceCount_ = 0, sequenceIndex_ = 0;
     bool holdLast_ = false, quickWake_ = false;

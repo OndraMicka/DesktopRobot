@@ -29,14 +29,17 @@ namespace
             player_.play(desktoprobot::getTestAnimation(id), limit);
         }
         void playTouchWake(::RobotState source,uint32_t) override { player_.play(desktoprobot::TouchWakeAnimation::get(static_cast<desktoprobot::RobotState>(source))); }
-        void playTouchLookUp(uint32_t) override { player_.play(desktoprobot::TouchLookUpAnimation::get()); }
+        void playTouchLookUp(::RobotState source, uint32_t) override { player_.play(desktoprobot::TouchLookUpAnimation::get(static_cast<desktoprobot::RobotState>(source))); }
         void playBase(::RobotState state, uint32_t) override {
             player_.play(desktoprobot::getStateAnimation(static_cast<desktoprobot::RobotState>(state)));
         }
         void playShakeRecovery(uint32_t) override {
             player_.play(desktoprobot::getShakeRecoveryAnimation(player_.getCurrentFrame()));
         }
-        void interactionSound(bool friendly) override { sound_.play(friendly ? desktoprobot::SoundEffect::Hold1 : desktoprobot::SoundEffect::Tap1); }
+        void playTouchReturn(uint32_t) override { player_.play(desktoprobot::getTouchReturnAnimation(player_.getCurrentFrame())); }
+        // New HOLD is an audition only; the removed HOLD variants are no
+        // longer triggered by behavior. Keep the existing TAP sound hookup.
+        void interactionSound(bool friendly) override { if (!friendly) sound_.play(desktoprobot::SoundEffect::Tap1); }
         bool isAnimationFinished() const override { return player_.isFinished(); }
         void showErrorFace() override { /* Firmware owns the hardware error screen. */ }
     private:
@@ -91,22 +94,14 @@ namespace
         std::array<Panel, 4> panels;
     };
 
-    constexpr std::array<SoundTestDefinition, 15> SOUND_TESTS = {{
+    constexpr std::array<SoundTestDefinition, 7> SOUND_TESTS = {{
         { desktoprobot::SoundEffect::Shake1, "SHAKE 1 - HOLD" },
         { desktoprobot::SoundEffect::Shake2, "SHAKE 2 - HOLD" },
-        { desktoprobot::SoundEffect::Shake3, "SHAKE 3 - HOLD" },
-        { desktoprobot::SoundEffect::Shake4, "SHAKE 4 - HOLD" },
-        { desktoprobot::SoundEffect::Shake5, "SHAKE 5 - HOLD" },
-        { desktoprobot::SoundEffect::Hold1, "HOLD 1" },
-        { desktoprobot::SoundEffect::Hold2, "HOLD 2" },
-        { desktoprobot::SoundEffect::Hold3, "HOLD 3" },
-        { desktoprobot::SoundEffect::Hold4, "HOLD 4" },
-        { desktoprobot::SoundEffect::Hold5, "HOLD 5" },
         { desktoprobot::SoundEffect::Tap1, "TAP 1" },
-        { desktoprobot::SoundEffect::Tap2, "TAP 2" },
-        { desktoprobot::SoundEffect::Tap3, "TAP 3" },
-        { desktoprobot::SoundEffect::Tap4, "TAP 4" },
-        { desktoprobot::SoundEffect::Tap5, "TAP 5" }
+        { desktoprobot::SoundEffect::WakeUp, "SOUND - WAKE UP" },
+        { desktoprobot::SoundEffect::FallAsleep, "SOUND - FALL ASLEEP" },
+        { desktoprobot::SoundEffect::Hold, "SOUND - HOLD" },
+        { desktoprobot::SoundEffect::PowerOn, "SOUND - POWER ON" }
     }};
 
     int getStateAnimationCount(desktoprobot::RobotState state)
@@ -582,8 +577,8 @@ int main()
                     }
                     else
                     {
-                        const bool loop = control.sound >= desktoprobot::SoundEffect::Shake1
-                            && control.sound <= desktoprobot::SoundEffect::Shake5;
+                        const bool loop = control.sound == desktoprobot::SoundEffect::Shake1
+                            || control.sound == desktoprobot::SoundEffect::Shake2;
                         soundPlayer.play(control.sound, loop);
                         loopingSound = loop ? &control : nullptr;
                     }

@@ -58,7 +58,6 @@ void Robot::update() {
  const uint32_t now=millis();
  if (state()!=RobotState::ERROR) {
   updateClock(now);
-  behavior_.update(now,effectiveTime()); reportState();
  }
 #if ROBOT_DEBUG_CONSOLE
  console_.update(); // Read-only status/help/diag remain available in ERROR.
@@ -69,6 +68,10 @@ void Robot::update() {
   shakePending_=false; handleEvent(InputEvent::SHAKE_END);
  }
  input_.update(eventNow);
+ behavior_.setTouchPending(input_.touchPending());
+ // Observe input before allowing automatic playback, while still reconciling
+ // scheduled boundaries before delivering the classified interaction.
+ behavior_.update(eventNow,effectiveTime()); reportState();
  InputEvent event;
  while (input_.pollEvent(event)) handleEvent(event);
  display_.update(eventNow);

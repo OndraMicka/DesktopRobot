@@ -19,46 +19,24 @@ namespace desktoprobot
             return { SoundSegmentType::Pause, 0.0f, 0.0f, durationMs };
         }
 
-        // Short repeating shake phrases and melodic hold auditions.
-        // Tap auditions, including the selected TAP 1, stay unchanged.
+        // Standalone buzzer auditions. SHAKE 1/2 and TAP 1 retain their exact
+        // original notes and timing; the four new sounds are UI previews only.
         const std::array<SoundDefinition, static_cast<std::size_t>(SoundEffect::Count)> sounds = {{
             // SHAKE 1: steady alternating pips with equal spacing.
             { beep(659, 80), pause(50), beep(988, 80), pause(50) },
             // SHAKE 2: two quick high pips answered by a low one.
             { beep(988, 55), pause(35), beep(988, 55), pause(35), beep(659, 110), pause(90) },
-            // SHAKE 3: a repeating descending three-note warning.
-            { beep(880, 90), pause(40), beep(740, 90), pause(40), beep(587, 90), pause(70) },
-            // SHAKE 4: bouncing low/high pairs with a syncopated gap.
-            { beep(523, 70), pause(35), beep(784, 100), pause(70),
-              beep(587, 70), pause(35), beep(880, 100), pause(70) },
-            // SHAKE 5: an even four-note zigzag.
-            { beep(784, 65), pause(45), beep(659, 65), pause(45),
-              beep(988, 65), pause(45), beep(740, 65), pause(45) },
-
-            // HOLD 1: the selected tap's rising fifth followed by a warm ending.
-            { beep(659, 90), pause(45), beep(988, 130), pause(75), beep(784, 260) },
-            // HOLD 2: a soft three-note major arpeggio in G.
-            { beep(392, 140), pause(40), beep(494, 140), pause(40), beep(587, 280) },
-            // HOLD 3: a light two-part greeting.
-            { beep(587, 80), pause(40), beep(880, 110), pause(110),
-              beep(740, 120), pause(40), beep(988, 230) },
-            // HOLD 4: a lilting rise with a repeated finishing note.
-            { beep(523, 110), pause(45), beep(659, 110), pause(45),
-              beep(784, 90), pause(55), beep(784, 240) },
-            // HOLD 5: an unhurried melodic arch returning home.
-            { beep(659, 150), pause(55), beep(831, 150), pause(55),
-              beep(988, 200), pause(80), beep(659, 280) },
-
             // TAP 1: a slightly lower rising fifth.
             { beep(659, 65), pause(45), beep(988, 100) },
-            // TAP 2: a crisp rising octave.
-            { beep(523, 70), pause(55), beep(1047, 90) },
-            // TAP 3: a gentler, slower rising major third.
-            { beep(784, 85), pause(65), beep(988, 120) },
-            // TAP 4: two repeated pips, the second held longer.
-            { beep(880, 55), pause(55), beep(880, 115) },
-            // TAP 5: a tiny three-note major arpeggio.
-            { beep(659, 55), pause(35), beep(831, 55), pause(35), beep(988, 100) }
+            // WAKE UP: a bright rising greeting, waking into an open fifth.
+            { beep(440, 100), pause(45), beep(659, 120), pause(45), beep(880, 210) },
+            // FALL ASLEEP: an unhurried descending phrase with a low ending.
+            { beep(659, 150), pause(80), beep(494, 200), pause(110), beep(330, 300) },
+            // HOLD: two friendly little pips followed by a sustained answer.
+            { beep(740, 85), pause(45), beep(988, 100), pause(90), beep(880, 270) },
+            // POWER ON: a short, distinct startup signature after plugging in.
+            { beep(330, 70), pause(35), beep(440, 70), pause(35),
+              beep(659, 110), pause(65), beep(880, 200) }
         }};
     }
 

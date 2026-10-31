@@ -6,9 +6,8 @@ namespace desktoprobot
 
     enum class SoundEffect
     {
-        Shake1, Shake2, Shake3, Shake4, Shake5,
-        Hold1, Hold2, Hold3, Hold4, Hold5,
-        Tap1, Tap2, Tap3, Tap4, Tap5,
+        Shake1, Shake2, Tap1,
+        WakeUp, FallAsleep, Hold, PowerOn,
         Count
     };
 

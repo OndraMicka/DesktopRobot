@@ -10,9 +10,10 @@ public:
  bool begin();
  void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) override;
  void playTouchWake(RobotState source,uint32_t now) override;
- void playTouchLookUp(uint32_t now) override;
+ void playTouchLookUp(RobotState source, uint32_t now) override;
  void playBase(RobotState state, uint32_t now) override;
  void playShakeRecovery(uint32_t now) override;
+ void playTouchReturn(uint32_t now) override;
  void update(uint32_t now);
  bool isAnimationFinished() const override { return player_.isFinished(); }
  void showErrorFace() override;
