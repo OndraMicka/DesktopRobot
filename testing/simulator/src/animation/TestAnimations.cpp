@@ -1,3 +1,4 @@
+#include "../../../../esp32/src/display/animations/CharacterAnimations.h"
 // CODEX TEST
  #include "TestAnimations.h"
 #include "../../../../esp32/src/display/animations/TouchAnimationBuilder.h"
@@ -514,7 +515,17 @@ namespace desktoprobot
             { TestAnimationId::IdleToTired, RobotState::Idle, "IDLE TO TIRED", true, RobotState::Tired },
             { TestAnimationId::IdleToSleep, RobotState::Idle, "IDLE TO SLEEP", true, RobotState::Sleep },
             { TestAnimationId::TiredToIdle, RobotState::Tired, "TIRED TO IDLE", true, RobotState::Idle },
-            { TestAnimationId::SleepToTired, RobotState::Sleep, "SLEEP TO TIRED", true, RobotState::Tired }
+            { TestAnimationId::SleepToTired, RobotState::Sleep, "SLEEP TO TIRED", true, RobotState::Tired },
+            { TestAnimationId::Microsleep, RobotState::Tired, "MICROSLEEP" },
+            { TestAnimationId::Hmm, RobotState::Idle, "HMM" },
+            { TestAnimationId::Kiss, RobotState::Idle, "KISS" },
+            { TestAnimationId::Sigh, RobotState::Tired, "SIGH" },
+            { TestAnimationId::SleepRoll, RobotState::Sleep, "SLEEP ROLL" },
+            { TestAnimationId::StartleLeft, RobotState::Idle, "STARTLE LEFT" },
+            { TestAnimationId::StartleUpRight, RobotState::Idle, "STARTLE UP RIGHT" },
+            { TestAnimationId::HeavyLids, RobotState::Tired, "HEAVY LIDS" },
+            { TestAnimationId::SleepyNod, RobotState::Tired, "SLEEPY NOD" },
+            { TestAnimationId::SleepTwitch, RobotState::Sleep, "SLEEP TWITCH" }
         }};
 
         AnimationStorage createStateAnimation(const char* name, const Pose& pose)
@@ -583,6 +594,7 @@ namespace desktoprobot
 
     const Animation& getTestAnimation(TestAnimationId id)
     {
+        if (isCharacterAnimation(id)) return getCharacterAnimation(id);
         return getAnimations()[static_cast<std::size_t>(id)].animation;
     }
 

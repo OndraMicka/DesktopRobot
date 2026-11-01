@@ -253,9 +253,22 @@ Instead, implement an activity scheduler with:
 * A mechanism to prevent two activities from playing simultaneously.
 * The ability to interrupt or cancel an activity when an important event occurs.
 
-The current decision intervals are 3–8 seconds in IDLE, 5–12 seconds in TIRED,
-and 12–30 seconds in SLEEP. The quiet outcome has weight 3. Existing animation
-weights, playback timing, blink intervals and the no-immediate-repeat rule remain unchanged.
+The current decision intervals are 2–6 seconds in IDLE, 4–11 seconds in TIRED,
+and 7–16 seconds in SLEEP. The quiet outcome has weight 3. RandomCuriosity has
+weight 15, Bored 8 and SleepZ 10. Blink delays are 2–4 seconds in IDLE and
+4–8 seconds in TIRED. Activity completions and quiet draws preserve the blink
+deadline. A random 0.8?2.2 second pause follows each spontaneous gesture. If
+both deadlines are overdue, the older one runs first; exact ties are randomized.
+Blinking does not force an activity to follow immediately. Playback timing and the no-immediate-repeat rule remain unchanged.
+Current cooldowns are defined in
+`esp32/src/behavior/BehaviourProgram.h`.
+
+The reviewed Microsleep, Hmm, Kiss, Sigh, SleepRoll, StartleLeft,
+StartleUpRight, HeavyLids, SleepyNod and SleepTwitch animations are included in
+automatic selection in their respective states. Current weights and shortened
+cooldowns are listed in `esp32/README.md`. Both startle directions additionally
+share a 20-second cooldown, measured between animation starts. Immutable flash
+frames match the reviewed simulator geometry and timing exactly.
 
 These values should be configurable and adjustable after testing.
 
@@ -485,6 +498,36 @@ If the robot is touched during a sleep-to-wake transition, do not restart the wa
 Use the passive piezo buzzer to complement the facial animations.
 
 The sound must be generated programmatically using frequencies and durations, not audio files.
+
+### Current implemented sound routing
+
+The shared `esp32/src/sound/SoundData.cpp` catalog defines all seven tone/pause
+scores for both firmware and SDL. `BehaviourProgram` controls a separate
+`SoundOutput`; the display output and animation data have no sound dependency.
+
+* Accepted TAP: Tap1 once; every accepted new tap restarts it.
+* Accepted HOLD: opening and LookUp remain silent. Play Hold once when the
+  reaction enters Smile; keeping the smile held never retriggers it. RELEASE
+  stops the reaction sound; release before Smile produces no Hold sound.
+* SHAKE_START: Shake1 loops; SHAKE_END stops it before recovery. Duplicate
+  SHAKE_START and rejected touch events do not restart audio.
+* Full TIRED/SLEEP -> IDLE transitions: WakeUp once. Quick touch opening uses
+  only its TAP/HOLD sound, with no additional wake-up effect.
+* Full transitions to SLEEP: FallAsleep once.
+* Blink, gaze, spontaneous activities, touch returns and animation previews
+  are silent. Replacing an action with a silent one stops the previous sound.
+* ERROR stops audio. Schedule priority applies to sound as well as animation.
+* Initial schedule reconciliation in `begin()` is silent. PowerOn and Shake2
+  are standalone simulator previews; spontaneous humming is not implemented.
+
+Only one score plays at a time. New requests replace old playback; behavior
+never waits for sound completion and retains its existing state/timer rules.
+ESP32 LEDC generates tones on GPIO3; a 2 ms task-dispatched ESP Timer services
+segments independently of blocking OLED transfers. Starts follow logical action
+boundaries, with no guarantee of exact physical frame/tone alignment. Playback
+status includes pauses and pending play requests; stop is applied on the next
+timer service. SDL uses the same notes/durations with its existing PCM backend.
+The sections below retain broader sound-design goals beyond this initial routing.
 
 ### 12.1 Angry Sound
 

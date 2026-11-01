@@ -10,6 +10,9 @@
 #include "SDLRenderer.h"
 #include "animation/AnimationPlayer.h"
 #include "animation/TestAnimations.h"
+#include "animation/PowerOnAnimation.h"
+#include "animation/PreviewAnimations.h"
+#include "../../../esp32/src/display/animations/CharacterAnimations.h"
 #include "sound/SoundPlayer.h"
 #include "sound/backends/pc/SDLAudioBackend.h"
 #include "ui/UI.h"
@@ -23,7 +26,7 @@ namespace
 {
     class SimulatorOutput : public AnimationOutput {
     public:
-        explicit SimulatorOutput(desktoprobot::AnimationPlayer& player, desktoprobot::SoundPlayer& sound) : player_(player), sound_(sound) {}
+        explicit SimulatorOutput(desktoprobot::AnimationPlayer& player) : player_(player) {}
         void playAnimation(AnimationId id, uint32_t, bool hold = false) override {
             const auto limit = hold ? desktoprobot::getExpressionFrameCount(id) : 0U;
             player_.play(desktoprobot::getTestAnimation(id), limit);
@@ -37,14 +40,10 @@ namespace
             player_.play(desktoprobot::getShakeRecoveryAnimation(player_.getCurrentFrame()));
         }
         void playTouchReturn(uint32_t) override { player_.play(desktoprobot::getTouchReturnAnimation(player_.getCurrentFrame())); }
-        // New HOLD is an audition only; the removed HOLD variants are no
-        // longer triggered by behavior. Keep the existing TAP sound hookup.
-        void interactionSound(bool friendly) override { if (!friendly) sound_.play(desktoprobot::SoundEffect::Tap1); }
         bool isAnimationFinished() const override { return player_.isFinished(); }
         void showErrorFace() override { /* Firmware owns the hardware error screen. */ }
     private:
         desktoprobot::AnimationPlayer& player_;
-        desktoprobot::SoundPlayer& sound_;
     };
 
     enum class ControlType
@@ -53,7 +52,9 @@ namespace
         Animation,
         Sound,
         Input,
-        Toggle
+        Toggle,
+        PowerOn,
+        Preview
     };
 
     struct Control
@@ -64,6 +65,7 @@ namespace
         desktoprobot::TestAnimationId animation;
         desktoprobot::SoundEffect sound;
         InputEvent input = InputEvent::NONE;
+        desktoprobot::PreviewId preview = desktoprobot::PreviewId::Microsleep;
     };
 
     struct SoundTestDefinition
@@ -94,14 +96,18 @@ namespace
         std::array<Panel, 4> panels;
     };
 
-    constexpr std::array<SoundTestDefinition, 7> SOUND_TESTS = {{
+    constexpr std::array<SoundTestDefinition, 11> SOUND_TESTS = {{
         { desktoprobot::SoundEffect::Shake1, "SHAKE 1 - HOLD" },
         { desktoprobot::SoundEffect::Shake2, "SHAKE 2 - HOLD" },
         { desktoprobot::SoundEffect::Tap1, "TAP 1" },
         { desktoprobot::SoundEffect::WakeUp, "SOUND - WAKE UP" },
         { desktoprobot::SoundEffect::FallAsleep, "SOUND - FALL ASLEEP" },
-        { desktoprobot::SoundEffect::Hold, "SOUND - HOLD" },
-        { desktoprobot::SoundEffect::PowerOn, "SOUND - POWER ON" }
+        { desktoprobot::SoundEffect::Hold, "HOLD - CALM" },
+        { desktoprobot::SoundEffect::PowerOn, "SOUND - POWER ON" },
+        { desktoprobot::SoundEffect::HoldPreview1, "HOLD 1 - WARM" },
+        { desktoprobot::SoundEffect::HoldPreview2, "HOLD 2 - CHIRP" },
+        { desktoprobot::SoundEffect::HoldPreview3, "HOLD 3 - CALM" },
+        { desktoprobot::SoundEffect::HoldPreview4, "HOLD 4 - PLAYFUL" }
     }};
 
     int getStateAnimationCount(desktoprobot::RobotState state)
@@ -109,11 +115,13 @@ namespace
         int count = 0;
         for (const auto& definition : desktoprobot::getAnimationTestDefinitions())
         {
-            if (definition.state == state)
+            if (definition.state == state && !desktoprobot::isCharacterAnimation(definition.id))
             {
                 ++count;
             }
         }
+        for (const auto& definition : desktoprobot::getPreviewDefinitions())
+            if (definition.state == state) ++count;
         return count;
     }
 
@@ -140,7 +148,7 @@ namespace
         }
 
         const int maximumRows = std::max({
-            getStateAnimationCount(desktoprobot::RobotState::Idle) + 1,
+            getStateAnimationCount(desktoprobot::RobotState::Idle) + 2,
             getStateAnimationCount(desktoprobot::RobotState::Tired) + 1,
             getStateAnimationCount(desktoprobot::RobotState::Sleep) + 1,
             static_cast<int>(SOUND_TESTS.size()) + 4
@@ -214,9 +222,16 @@ namespace
         );
         buttonY += buttonHeight + buttonGap;
 
+        if (state == desktoprobot::RobotState::Idle)
+        {
+            addControl(controls, "POWER ON", {buttonX, buttonY, buttonWidth, buttonHeight},
+                ControlType::PowerOn);
+            buttonY += buttonHeight + buttonGap;
+        }
+
         for (const auto& definition : desktoprobot::getAnimationTestDefinitions())
         {
-            if (definition.state != state)
+            if (definition.state != state || desktoprobot::isCharacterAnimation(definition.id))
             {
                 continue;
             }
@@ -229,6 +244,14 @@ namespace
                 state,
                 definition.id
             );
+            buttonY += buttonHeight + buttonGap;
+        }
+        for (const auto& definition : desktoprobot::getPreviewDefinitions())
+        {
+            if (definition.state != state) continue;
+            addControl(controls, definition.label,
+                {buttonX, buttonY, buttonWidth, buttonHeight}, ControlType::Preview, state);
+            controls.back().preview = definition.id;
             buttonY += buttonHeight + buttonGap;
         }
     }
@@ -287,10 +310,18 @@ namespace
             {
                 control.button.active = control.state == selectedState;
             }
+            else if (control.type == ControlType::PowerOn)
+            {
+                control.button.active = player.getCurrentAnimation() == &desktoprobot::getPowerOnAnimation();
+            }
             else if (control.type == ControlType::Animation)
             {
                 control.button.active =
                     player.getCurrentAnimation() == &desktoprobot::getTestAnimation(control.animation);
+            }
+            else if (control.type == ControlType::Preview)
+            {
+                control.button.active = player.getCurrentAnimation() == &desktoprobot::getPreviewAnimation(control.preview);
             }
             else
             {
@@ -384,13 +415,14 @@ int main()
     desktoprobot::SoundPlayer soundPlayer(audioBackend);
     desktoprobot::AnimationPlayer player;
     desktoprobot::RobotState selectedState = desktoprobot::RobotState::Idle;
-    player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
     desktoprobot::Framebuffer framebuffer;
-    SimulatorOutput output(player, soundPlayer);
+    SimulatorOutput output(player);
     BehaviourConfig config;
     config.randomSeed = static_cast<uint32_t>(std::time(nullptr));
-    BehaviourProgram behavior(output, config);
-    behavior.begin(SDL_GetTicks());
+    BehaviourProgram behavior(output, soundPlayer, config);
+    // Boot owns the display until the whole arrival has finished.
+    player.play(desktoprobot::getPowerOnAnimation());
+    bool startupPreview = true;
     bool automatic = true;
     int64_t timeOffset = 0;
     // Controls: A auto, T tap, H hold/release, arrows time.
@@ -473,9 +505,12 @@ int main()
             }
             else if (event.type == SDL_KEYDOWN && event.key.repeat == 0)
             {
+                if (startupPreview) continue;
                 switch (event.key.keysym.sym)
                 {
                 case SDLK_a:
+                    startupPreview = false;
+                    soundPlayer.stop(); loopingSound = nullptr;
                     automatic = !automatic;
                     if (automatic) behavior.begin(SDL_GetTicks());
                     break;
@@ -524,6 +559,7 @@ int main()
             }
             else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
             {
+                if (startupPreview) continue;
                 for (auto& control : controls)
                 {
                     if (!desktoprobot::pointInRect(event.button.x, event.button.y, control.button.rect))
@@ -532,6 +568,8 @@ int main()
                     }
 
                     if (control.type == ControlType::Toggle) {
+                        startupPreview = false;
+                        soundPlayer.stop(); loopingSound = nullptr;
                         automatic = !automatic;
                         if (automatic) behavior.begin(SDL_GetTicks());
                         break;
@@ -550,6 +588,24 @@ int main()
                     }
                     if (shaking && control.type != ControlType::Sound) break;
 
+                    if (control.type == ControlType::PowerOn) {
+                        soundPlayer.stop(); loopingSound = nullptr;
+                        automatic = false;
+                        startupPreview = false;
+                        selectedState = desktoprobot::RobotState::Idle;
+                        player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
+                        player.playOneShot(desktoprobot::getPowerOnAnimation());
+                        break;
+                    }
+
+                    if (control.type == ControlType::Preview) {
+                        soundPlayer.stop(); loopingSound = nullptr;
+                        automatic = false;
+                        selectedState = control.state;
+                        player.setLoopAnimation(desktoprobot::getStateAnimation(selectedState));
+                        player.playOneShot(desktoprobot::getPreviewAnimation(control.preview));
+                        break;
+                    }
                     if (control.type != ControlType::Sound && automatic) {
                         if (control.type == ControlType::State) behavior.setState(static_cast<::RobotState>(control.state));
                         else behavior.preview(control.animation);
@@ -557,6 +613,7 @@ int main()
                     }
                     if (control.type == ControlType::State)
                     {
+                        soundPlayer.stop(); loopingSound = nullptr;
                         const auto* transition = desktoprobot::getStateTransition(selectedState, control.state);
                         if (selectedState == control.state) break;
                         selectedState = control.state;
@@ -566,6 +623,7 @@ int main()
                     }
                     else if (control.type == ControlType::Animation)
                     {
+                        soundPlayer.stop(); loopingSound = nullptr;
                         selectedState = control.state;
                         for (const auto& definition : desktoprobot::getAnimationTestDefinitions())
                         {
@@ -579,6 +637,9 @@ int main()
                     {
                         const bool loop = control.sound == desktoprobot::SoundEffect::Shake1
                             || control.sound == desktoprobot::SoundEffect::Shake2;
+                        // Let manual auditions finish without an automatic blink
+                        // or activity cancelling their audio. A/AUTO resumes behavior.
+                        automatic = false;
                         soundPlayer.play(control.sound, loop);
                         loopingSound = loop ? &control : nullptr;
                     }
@@ -591,8 +652,14 @@ int main()
         const uint32_t delta = now - lastFrameTime;
         lastFrameTime = now;
         player.update(delta);
+        if (startupPreview && player.isFinished()) {
+            startupPreview = false;
+            behavior.begin(now);
+        }
         char clockLabel[180];
-        if (automatic) {
+        if (startupPreview) {
+            std::snprintf(clockLabel, sizeof(clockLabel), "POWER ON PREVIEW");
+        } else if (automatic) {
             const auto epoch = std::time(nullptr) + timeOffset;
             const std::tm local = *std::localtime(&epoch);
             behavior.update(now, {static_cast<int64_t>((local.tm_year+1899)*365 + (local.tm_year+1899)/4 - (local.tm_year+1899)/100 + (local.tm_year+1899)/400 + local.tm_yday), static_cast<uint32_t>(local.tm_hour*3600+local.tm_min*60+local.tm_sec), true});

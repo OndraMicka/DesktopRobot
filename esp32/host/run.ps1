@@ -7,13 +7,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Host test compilation failed' }
     & ./esp32/.pio/host/tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Host tests failed' }
-    $graphics = @('testing/simulator/src/Framebuffer.cpp', 'testing/simulator/src/animation/Animation.cpp', 'testing/simulator/src/animation/TestAnimations.cpp')
+    $graphics = @('testing/simulator/src/Framebuffer.cpp', 'testing/simulator/src/animation/Animation.cpp', 'testing/simulator/src/animation/TestAnimations.cpp', 'esp32/src/display/animations/CharacterAnimations.cpp')
     & g++ -std=c++17 -Wall -Wextra -Werror -Itesting/simulator/src testing/simulator/tests/StateTransitions.cpp testing/simulator/src/animation/AnimationPlayer.cpp @graphics -o esp32/.pio/host/transitions.exe
     if ($LASTEXITCODE -ne 0) { throw 'Transition test compilation failed' }
     & ./esp32/.pio/host/transitions.exe
     if ($LASTEXITCODE -ne 0) { throw 'Transition tests failed' }
     & g++ -std=c++17 -Itesting/simulator/src testing/simulator/tests/CatalogSnapshot.cpp @graphics -o esp32/.pio/host/snapshot.exe
     if ($LASTEXITCODE -ne 0) { throw 'Catalog snapshot compilation failed' }
+    & g++ -std=c++17 -Wall -Wextra -Werror -Itesting/simulator/src testing/simulator/tests/PreviewAnimations.cpp testing/simulator/src/animation/PreviewAnimations.cpp @graphics -o esp32/.pio/host/character-tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Character animation test compilation failed' }
+    & ./esp32/.pio/host/character-tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Character animation tests failed' }
     $firmwareGraphics = @(Get-ChildItem esp32/src/display/animations -Filter *.cpp | ForEach-Object { $_.FullName })
     & g++ -std=c++17 -DROBOT_COMPACT_ANIMATIONS -Itesting/simulator/src testing/simulator/tests/CatalogSnapshot.cpp esp32/src/display/Framebuffer.cpp esp32/src/display/Animation.cpp @firmwareGraphics -o esp32/.pio/host/snapshot-compact.exe
     if ($LASTEXITCODE -ne 0) { throw 'Compact catalog snapshot compilation failed' }

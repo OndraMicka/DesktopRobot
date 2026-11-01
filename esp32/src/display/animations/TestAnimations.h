@@ -41,6 +41,16 @@ namespace desktoprobot
         IdleToSleep,
         TiredToIdle,
         SleepToTired,
+        Microsleep,
+        Hmm,
+        Kiss,
+        Sigh,
+        SleepRoll,
+        StartleLeft,
+        StartleUpRight,
+        HeavyLids,
+        SleepyNod,
+        SleepTwitch,
         Count
     };
 

@@ -39,6 +39,10 @@ bool Robot::begin() {
  display_.setLog(outputLog,this);
  HardwareDiagnostics diagnostics;
  result_=diagnostics.run(display_,input_);
+ if (!sound_.begin()) {
+  log("[SOUND] Initialization failed; continuing without sound");
+  soundFaultLogged_=true;
+ } else log("[SOUND] GPIO3 LEDC ready; output silent (electrical load not verified)");
  if (!result_.ok) {
   char message[160]; std::snprintf(message,sizeof(message),"[ERROR] %s",result_.error); log(message);
   behavior_.setState(RobotState::ERROR);
@@ -46,7 +50,8 @@ bool Robot::begin() {
   timeManager_.begin(millis(),outputLog,this);
   updateClock(millis());
   log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
-  behavior_.begin(millis(),effectiveTime());
+  starting_=true;
+  display_.playPowerOn(millis());
  }
  reportState();
 #if ROBOT_DEBUG_CONSOLE
@@ -56,6 +61,10 @@ bool Robot::begin() {
 }
 void Robot::update() {
  const uint32_t now=millis();
+ sound_.update(now); // Host/manual driver; ESP32 advances in the ESP Timer task.
+ if (!sound_.healthy() && !soundFaultLogged_) {
+  log("[SOUND] Output failed; sound disabled until restart"); soundFaultLogged_=true;
+ }
  if (state()!=RobotState::ERROR) {
   updateClock(now);
  }
@@ -64,6 +73,20 @@ void Robot::update() {
 #endif
  if (state()==RobotState::ERROR) { display_.showErrorFace(); return; }
  const uint32_t eventNow=millis();
+ if (starting_) {
+  // Keep clocks and the console live, but boot owns the display. Discard
+  // interactions collected during startup so they cannot replace its frames.
+  input_.update(eventNow);
+  InputEvent ignored;
+  while (input_.pollEvent(ignored)) {}
+  display_.update(eventNow);
+  if (display_.isAnimationFinished()) {
+   starting_=false;
+   input_.begin();
+   behavior_.begin(eventNow,effectiveTime()); reportState();
+  }
+  return;
+ }
  if (shakePending_ && eventNow-shakeStart_>=shakeDuration_) {
   shakePending_=false; handleEvent(InputEvent::SHAKE_END);
  }
@@ -78,6 +101,7 @@ void Robot::update() {
  behavior_.update(eventNow,effectiveTime()); reportState();
 }
 void Robot::handleEvent(InputEvent event) {
+ if (starting_) { log("[BOOT] Input ignored until POWER ON finishes"); return; }
  const char* names[]={"NONE","TAP","HOLD","RELEASE","SHAKE_START","SHAKE_END"};
  char message[112];
  std::snprintf(message,sizeof(message),"[EVENT] %s received state=%s mode=%s%s",names[static_cast<unsigned>(event)],
@@ -86,13 +110,14 @@ void Robot::handleEvent(InputEvent event) {
  behavior_.handleEvent(event); reportState();
 }
 void Robot::requestState(RobotState target, bool morning) {
+ if (starting_) { log("[BOOT] State request ignored until POWER ON finishes"); return; }
  if (state()==RobotState::ERROR) { log("[ERROR] State request blocked: ERROR is latched"); return; }
  const bool scheduled=std::strcmp(behavior_.modeName(),"SCHEDULE")==0;
  behavior_.requestState(target,morning); reportState();
  log(scheduled ? "[REQUEST] Deferred to schedule priority; request ignored" : "[REQUEST] State transition requested");
 }
 void Robot::simulateShake(uint32_t duration) {
- if (state()==RobotState::ERROR || !duration || duration>600000) return;
+ if (starting_ || state()==RobotState::ERROR || !duration || duration>600000) return;
  shakePending_=true; shakeStart_=millis(); shakeDuration_=duration;
  handleEvent(InputEvent::SHAKE_START);
 }
@@ -102,7 +127,7 @@ void Robot::setLocalTime(uint64_t seconds) {
  timeManager_.setManualLocalTime(seconds,millis());
  realTime_=timeManager_.localTime();
  log("[CLOCK] Real fallback time configured");
- if (!simulated_) behavior_.changeTime(millis(),realTime_);
+ if (!simulated_ && !starting_) behavior_.changeTime(millis(),realTime_);
  reportState();
 }
 void Robot::setSimulatedTime(uint32_t second) {
@@ -111,13 +136,15 @@ void Robot::setSimulatedTime(uint32_t second) {
  const bool enteringSimulation=!simulated_;
  simulatedTime_={simulated_ ? simulatedTime_.day : realTime_.valid ? realTime_.day : 0,second,true};
  simulated_=true; simulatedRemainder_=0;
- behavior_.changeTime(millis(),simulatedTime_,enteringSimulation); reportState();
+ if (!starting_) behavior_.changeTime(millis(),simulatedTime_,enteringSimulation);
+ reportState();
  log("[CLOCK] SIMULATED time changed; clock continues at normal speed");
 }
 void Robot::useAutoTime() {
  if (state()==RobotState::ERROR) return;
  updateClock(millis()); simulated_=false; shakePending_=false;
- behavior_.changeTime(millis(),realTime_,true); reportState();
+ if (!starting_) behavior_.changeTime(millis(),realTime_,true);
+ reportState();
  log(realTime_.valid ? "[CLOCK] AUTO restored; schedule reconciled" : "[CLOCK] AUTO UNSET: real time unavailable; IDLE fallback, schedule inactive");
 }
 void Robot::updateClock(uint32_t now) {
@@ -131,7 +158,7 @@ void Robot::describeStatus(char* buffer, std::size_t size) const {
  const auto* animation=display_.currentAnimation();
  std::snprintf(buffer,size,
   "[STATUS] state=%s animation=%s finished=%s mode=%s\n[CLOCK] mode=%s valid=%s day=%lld time=%02lu:%02lu:%02lu real=%s source=%s wifi=%s\n[REACTION] temporary=%s remaining_ms=%lu held=%s shake_timer=%s\n[ERROR] %s\n[TIME_ERROR] %s",
-  stateName(state()),animation ? animation->name : "NONE",display_.isAnimationFinished() ? "yes" : "no",behavior_.modeName(),
+  stateName(state()),animation ? animation->name : "NONE",display_.isAnimationFinished() ? "yes" : "no",starting_ ? "POWER_ON" : behavior_.modeName(),
   simulated_ ? "SIMULATED" : "AUTO",time.valid ? "yes" : "no",static_cast<long long>(time.day),
   static_cast<unsigned long>(time.second/3600),static_cast<unsigned long>((time.second/60)%60),static_cast<unsigned long>(time.second%60),
   realTime_.valid ? "available" : "UNSET",timeManager_.status(),timeManager_.radioOff() ? "OFF" : "ON",behavior_.temporaryName(),static_cast<unsigned long>(behavior_.temporaryRemainingMs()),

@@ -1,23 +1,18 @@
 #pragma once
+#include "../../../../esp32/src/sound/SoundOutput.h"
 
 namespace desktoprobot
 {
     class AudioBackend;
 
-    enum class SoundEffect
-    {
-        Shake1, Shake2, Tap1,
-        WakeUp, FallAsleep, Hold, PowerOn,
-        Count
-    };
-
-    class SoundPlayer
+    class SoundPlayer final : public SoundOutput
     {
     public:
         explicit SoundPlayer(AudioBackend& backend);
 
-        void play(SoundEffect effect, bool loop = false);
-        void stop();
+        void play(SoundEffect effect, bool loop = false) override;
+        void stop() override;
+        bool isPlaying() const override;
 
     private:
         AudioBackend& backend_;

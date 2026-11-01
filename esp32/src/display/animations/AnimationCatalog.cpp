@@ -1,3 +1,4 @@
+#include "CharacterAnimations.h"
 #include "AnimationBuilder.h"
 #include "BlinkAnimation.h"
 #include "LookLeftAnimation.h"
@@ -35,6 +36,7 @@
 #include <array>
 #include <cstdint>
 #include <cmath>
+#include <new>
 
 namespace desktoprobot
 {
@@ -97,7 +99,17 @@ default: break;
             { TestAnimationId::IdleToTired, RobotState::Idle, "IDLE TO TIRED", true, RobotState::Tired },
             { TestAnimationId::IdleToSleep, RobotState::Idle, "IDLE TO SLEEP", true, RobotState::Sleep },
             { TestAnimationId::TiredToIdle, RobotState::Tired, "TIRED TO IDLE", true, RobotState::Idle },
-            { TestAnimationId::SleepToTired, RobotState::Sleep, "SLEEP TO TIRED", true, RobotState::Tired }
+            { TestAnimationId::SleepToTired, RobotState::Sleep, "SLEEP TO TIRED", true, RobotState::Tired },
+            { TestAnimationId::Microsleep, RobotState::Tired, "MICROSLEEP" },
+            { TestAnimationId::Hmm, RobotState::Idle, "HMM" },
+            { TestAnimationId::Kiss, RobotState::Idle, "KISS" },
+            { TestAnimationId::Sigh, RobotState::Tired, "SIGH" },
+            { TestAnimationId::SleepRoll, RobotState::Sleep, "SLEEP ROLL" },
+            { TestAnimationId::StartleLeft, RobotState::Idle, "STARTLE LEFT" },
+            { TestAnimationId::StartleUpRight, RobotState::Idle, "STARTLE UP RIGHT" },
+            { TestAnimationId::HeavyLids, RobotState::Tired, "HEAVY LIDS" },
+            { TestAnimationId::SleepyNod, RobotState::Tired, "SLEEPY NOD" },
+            { TestAnimationId::SleepTwitch, RobotState::Sleep, "SLEEP TWITCH" }
         }};
 
         void createStateAnimation(AnimationStorage& result, const char* name, const Pose&) {
@@ -108,7 +120,10 @@ default: break;
 
 #ifdef ROBOT_COMPACT_ANIMATIONS
         // One active catalog buffer, filled in place: no 100 KB stack temporaries.
-        AnimationStorage activeStorage;
+        // Keep the workspace in BSS. Pose default members otherwise cause the
+        // entire mostly-zero buffer to be serialized into the upload image.
+        alignas(AnimationStorage) unsigned char activeStorageBytes[sizeof(AnimationStorage)];
+        AnimationStorage& activeStorage = *new (activeStorageBytes) AnimationStorage{};
 #else
         const std::array<AnimationStorage, static_cast<std::size_t>(TestAnimationId::Count)>& getAnimations()
         {
@@ -145,6 +160,7 @@ default: break;
 
     const Animation& getTestAnimation(TestAnimationId id)
     {
+        if (isCharacterAnimation(id)) return getCharacterAnimation(id);
 #ifdef ROBOT_COMPACT_ANIMATIONS
         initializeAnimations(activeStorage, id);
         return activeStorage.animation;

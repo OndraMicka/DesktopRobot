@@ -96,6 +96,15 @@ namespace desktoprobot
         SDL_UnlockAudioDevice(device_);
     }
 
+    bool SDLAudioBackend::isPlaying() const
+    {
+        if (device_ == 0) return false;
+        SDL_LockAudioDevice(device_);
+        const bool playing = !samples_.empty() && (loop_ || sampleIndex_ < samples_.size());
+        SDL_UnlockAudioDevice(device_);
+        return playing;
+    }
+
     bool SDLAudioBackend::play(const SoundDefinition& sound, std::string& error, bool loop)
     {
         if (device_ == 0)

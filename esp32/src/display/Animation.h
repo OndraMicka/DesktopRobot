@@ -52,11 +52,21 @@ namespace desktoprobot
         return { DrawCommandType::RoundedRectangle, x, y, width, height, filled, radius };
     }
 
+    // Compact flash representation for reviewed 128x64 character animations.
+    // The high bit stores filled; the remaining bits store DrawCommandType.
+    struct PackedDrawCommand
+    {
+        uint8_t typeAndFilled;
+        int8_t x1, y1, x2, y2, radius;
+    };
+    static_assert(sizeof(PackedDrawCommand) == 6, "Flash command layout changed");
+
     struct Frame
     {
         uint32_t durationMs;
         const DrawCommand* commands;
         std::size_t commandCount;
+        const PackedDrawCommand* packedCommands = nullptr;
     };
 
     struct Animation

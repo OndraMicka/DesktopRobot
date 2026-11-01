@@ -4,6 +4,7 @@
 #include "diagnostics/HardwareDiagnostics.h"
 #include "config/Debug.h"
 #include "time/TimeManager.h"
+#include "sound/SoundManager.h"
 #if ROBOT_DEBUG_CONSOLE
 #include "debug/DebugConsole.h"
 #endif
@@ -23,6 +24,7 @@ public:
 private:
  LocalTime realTime_{}, simulatedTime_{};
  bool simulated_=false, shakePending_=false;
+ bool starting_=false;
  uint32_t clockTick_=0, simulatedRemainder_=0;
  uint32_t shakeStart_=0, shakeDuration_=0;
  RobotState loggedState_=RobotState::IDLE;
@@ -35,8 +37,10 @@ private:
  TimeManager timeManager_;
  InputController input_;
  OutputDisplay display_;
+ desktoprobot::SoundManager sound_;
+ bool soundFaultLogged_ = false;
  static uint32_t randomValue(void*);
- BehaviourProgram behavior_{display_, {}, randomValue};
+ BehaviourProgram behavior_{display_, sound_, {}, randomValue};
  DiagnosticResult result_{false,"Not started"};
 #if ROBOT_DEBUG_CONSOLE
  DebugConsole console_{*this};

@@ -28,5 +28,6 @@ namespace desktoprobot
         virtual ~AudioBackend() = default;
         virtual bool play(const SoundDefinition& sound, std::string& error, bool loop = false) = 0;
         virtual void stop() = 0;
+        virtual bool isPlaying() const = 0;
     };
 }

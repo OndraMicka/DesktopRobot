@@ -29,7 +29,18 @@ The project is written in **C++**.
 
 ### PC Simulator
 
-A C++ simulator will be used to develop and test the face and animations before running them on the physical device.
+A C++/SDL2 simulator develops and tests the face, behavior and sounds before
+running them on the physical device. On Windows with MSYS2 UCRT64 and SDL2:
+
+```powershell
+./testing/simulator/build.ps1
+./testing/build/desktop_robot_simulator.exe
+```
+
+The local VS Code task `Build DesktopRobot Simulator` invokes the same build
+script before `Run DesktopRobot Simulator`. The script includes shared firmware
+sound data and copies the runtime DLLs beside the executable, so direct launch
+does not depend on VS Code's PATH. Pass `-Compiler <path-to-g++.exe>` if needed.
 
 The simulator will emulate the 128×64 OLED display on a computer.
 

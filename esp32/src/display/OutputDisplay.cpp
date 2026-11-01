@@ -1,5 +1,6 @@
 #include "OutputDisplay.h"
 #include "animations/AnimationCatalog.h"
+#include "animations/PowerOnAnimation.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include <cstdio>
@@ -8,7 +9,15 @@ bool OutputDisplay::begin() {
  display_.setBusClock(Pins::I2C_HZ);
  // U8g2 begin() cannot verify the physical display; diagnostics also checks ACK.
  ready_=display_.begin();
+ if (ready_) {
+  // Clear retained OLED RAM before clocks, sound or any face can be started.
+  framebuffer_.clear(); display_.clearBuffer(); display_.sendBuffer();
+ }
  return ready_;
+}
+void OutputDisplay::playPowerOn(uint32_t now) {
+ play(desktoprobot::getPowerOnAnimation(),now);
+ update(now); // Send the blank opening frame immediately, before the first loop.
 }
 void OutputDisplay::play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit) {
  if (!ready_ || error_) return;

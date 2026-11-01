@@ -8,6 +8,7 @@ public:
  using Log = void (*)(void*, const char*);
  void setLog(Log callback, void* context) { log_=callback; logContext_=context; }
  bool begin();
+ void playPowerOn(uint32_t now);
  void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) override;
  void playTouchWake(RobotState source,uint32_t now) override;
  void playTouchLookUp(RobotState source, uint32_t now) override;

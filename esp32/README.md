@@ -11,6 +11,7 @@ ESP32-C3 Super Mini, SH1106 128x64 and TTP223. The hardware test in
 | OLED SDA | GPIO4 |
 | OLED SCL | GPIO5 |
 | TTP223 OUT | GPIO1 |
+| Piezo driver control (3.3 V logic) | GPIO3 |
 | Module VCC / GND | 3V3 / GND |
 
 Configuration: `src/config/Pins.h`, active HIGH, debounce 35 ms, HOLD 700 ms,
@@ -102,7 +103,7 @@ restores IDLE/TIRED or leaves a woken sleeper TIRED under the temporary rules.
 An early release cancels the friendly sequence and restores its return state.
 
 Priority: latched ERROR, then scheduled transitions, then shake/recovery and user
-interactions, required transitions, spontaneous activity, blinking. A scheduled
+interactions, required transitions, then spontaneous activity and blinking by their deadlines. A scheduled
 boundary cancels the old interaction/sequence and its temporary return target;
 release cannot restore the obsolete state. Scheduled sequences cannot be
 interrupted by input. Duplicate SHAKE_START does not restart SHAKING; SHAKE_END
@@ -112,17 +113,45 @@ software can inject events through `Robot::handleEvent` and the simulator.
 
 `BehaviourConfig` contains per-state decision intervals, blink intervals,
 activity weights/cooldowns, quiet weight, temporary duration and random seed.
-Default decision intervals: IDLE 3-8 s, TIRED 5-12 s, SLEEP 12-30 s.
+Default decision intervals: IDLE 6-14 s, TIRED 8-18 s, SLEEP 12-25 s.
 The quiet outcome has weight 3. Cooldowns: directional looks 5 s, LookAround
-8 s, Thinking/Listening 20 s, Smile/Bored 30 s, RandomCuriosity 15 s,
-IdleYawn 60 s, TiredYawn 18 s, SlowEyeMovement 12 s, SleepZ 15 s,
-SleepEyeOpen 45 s. Animation weights, frame timing and blink intervals are
-unchanged; the previous spontaneous activity remains excluded from the next draw.
-Blink intervals: IDLE 3-7 s, TIRED 6-14 s, no ordinary SLEEP blinking.
-Blinking has a separate timer and does not postpone activity decisions.
+8 s, Thinking 10 s, Listening/Smile/Bored 20 s, RandomCuriosity 15 s,
+IdleYawn 15 s, TiredYawn 12 s, SlowEyeMovement 12 s, SleepZ 10 s,
+SleepEyeOpen 20 s. RandomCuriosity has weight 15, Bored 8 and SleepZ 10.
+Animation frame timing is unchanged; the previous spontaneous
+activity remains excluded from the next draw.
+Blink intervals: IDLE 2-5 s, TIRED 4-9 s, no ordinary SLEEP blinking.
+Blinking has a separate timer. Activity completions and quiet draws cannot reset
+it. A random 0.8-2.2 s breathing gap follows each activity or blink. When both
+deadlines are due, the older one wins; exact ties are randomized. Completing a
+blink preserves the activity deadline. Neither kind is chained immediately to
+the other, and multiple ordinary blinks may occur between activities.
 Activities cannot interrupt an interaction. Selection excludes the last chosen
 activity and activities on cooldown, and includes a quiet outcome. Random input
 can be injected for deterministic tests; firmware uses esp_random.
+
+The ten reviewed character animations are now part of the firmware catalog and
+automatic activity selection. Their frames are immutable flash data in
+`CharacterAnimationData.inc`, exported from the approved simulator previews;
+they do not allocate a second animation workspace in RAM.
+
+| State | Activity | Weight | Cooldown between starts |
+| --- | --- | ---: | ---: |
+| IDLE | Hmm | 12 | 15 s |
+| IDLE | Kiss | 5 | 45 s |
+| IDLE | StartleLeft | 7 | 30 s |
+| IDLE | StartleUpRight | 7 | 30 s |
+| TIRED | Microsleep | 18 | 20 s |
+| TIRED | Sigh | 20 | 15 s |
+| TIRED | HeavyLids | 28 | 12 s |
+| TIRED | SleepyNod | 22 | 15 s |
+| SLEEP | SleepRoll | 12 | 25 s |
+| SLEEP | SleepTwitch | 10 | 18 s |
+
+Both startle directions also share a 20-second cooldown. Weights normalize over
+currently eligible activities plus the quiet outcome; they are not fixed
+percentages. Relative activity weights are unchanged; cooldowns above control repeat frequency.
+The simulator's AUTO mode uses this same behavior configuration.
 
 ## Specification reconciliation
 
@@ -134,8 +163,8 @@ precedence over the earlier minimal-firmware implementation document.
 - The current TIRED-to-SLEEP ID is TiredToSleep; its label is TIRED TO SLEEP,
   although an older specification table calls it GO TO SLEEP.
 - Smile serves contented and self-satisfied expressions with combined weight 10.
-  RandomCuriosity covers checking surroundings. Original supported IDLE weights
-  (LookAround 35, Thinking 10, IdleYawn 8, Bored 5, Listening 7) are retained.
+  RandomCuriosity covers checking surroundings with weight 15. Other IDLE weights
+  include LookAround 35, Thinking 10, IdleYawn 8, Bored 8 and Listening 7.
 - There are no dedicated HUM or almost-falling-asleep animations. These are not
   synthesized or selected. Quiet outcomes provide idle periods. Unspecified
   intervals, other weights and cooldowns are configurable initial defaults.
@@ -154,6 +183,14 @@ failure latches ERROR until reboot, disables inputs/normal behavior and displays
 a static sad face with ERROR when the OLED is available. U8g2 initialization and
 ACK cannot verify visible pixels. TTP223 is logged as CONFIGURED, not electrically
 verified. Display disconnection during runtime is not continuously monitored.
+
+On every successful boot/reset, the OLED is cleared before any face is shown.
+The shared POWER ON animation runs for 4.35 seconds: 900 ms blank, 1 second
+unfolding the eyes sideways into lines, then 2 seconds opening them vertically.
+The mouth grows during the first 400 ms of that vertical opening, followed by
+a 450 ms hold. Touch, shake, state commands and schedule changes cannot replace
+the startup frames. Clocks and status commands remain active; after startup the
+current time determines the normal state. Hardware errors retain priority.
 
 ## Simulator and tests
 
@@ -177,7 +214,7 @@ Tests cover all schedule boundaries, six transitions, TAP/HOLD/RELEASE in each
 state, early/night wake-ups, two-stage timeouts, interruption, schedule priority,
 shake/recovery, deterministic random selection, cooldowns, quiet outcomes,
 state restrictions, millis overflow, diagnostics and ERROR.
-Catalog snapshots compare every pixel and frame duration of all 25 animations,
+Catalog snapshots compare every pixel and frame duration of all 35 animations,
 three state loops and recovery from every shake frame. The compact and desktop
 catalog hashes match the original pre-change catalog.
 
@@ -212,3 +249,89 @@ Angry skips its neutral/open-eye ending when returning to TIRED, preventing
 a flash of open eyes. This also works when releasing HOLD during its opening
 or upward gaze. HOLD detection remains 700 ms. Full state transitions and
 scheduled sequences retain their original timing and priority.
+
+## Sound
+
+`src/sound/SoundData.cpp` is the single score catalog for firmware and SDL.
+Its constant arrays contain 16-bit frequency/duration pairs (4 bytes per
+segment); 0 Hz means a pause. Scores are read directly from flash on ESP32.
+SHAKE, TAP, wake-up, sleep and startup previews retain their original notes
+and durations. The HOLD reaction now uses the selected CALM variant 3.
+
+Four additional HOLD auditions are available in the simulator: HOLD 1 - WARM
+(940 ms), HOLD 2 - CHIRP (670 ms), HOLD 3 - CALM (960 ms), HOLD 4 - PLAYFUL
+(945 ms). HOLD - CALM plays the selected reaction sound: variant 3, a low rising
+392/494/587 Hz phrase lasting 960 ms, shared by firmware and simulator.
+The four comparison buttons remain available. Clicking a sound audition switches to PREVIEW
+so automatic animations cannot cut it short; A or AUTO / PREVIEW resumes behavior.
+
+`SoundOutput` separates sound from `AnimationOutput`. `BehaviourProgram`
+chooses effects; `SoundManager` handles playback without display dependencies.
+
+| Accepted action | Effect |
+|---|---|
+| TAP, including another TAP during a reaction | Tap1, restarted once |
+| HOLD | Hold once when Smile starts, after the opening/upward gaze; no repeats while held |
+| SHAKE_START | Shake1, loop until SHAKE_END or interruption |
+| Full TIRED/SLEEP -> IDLE transition | WakeUp, once |
+| Full transition into SLEEP | FallAsleep, once |
+| Blink, gaze, spontaneous activity, touch return, animation preview | Silent |
+| ERROR | Stop sound |
+
+Initial schedule reconciliation in `begin()` is silent. PowerOn and Shake2
+remain manual simulator previews. Quick touch opening does not add WakeUp.
+An ignored input does not play a sound. Replacing an action cancels its sound,
+even when the new action is silent; steps inside one reaction do not retrigger.
+Behavior never waits for audio completion and keeps existing state/schedule
+priorities and animation timing.
+
+The ESP32 backend targets Arduino Core **3.x** (`ledcAttach`, `ledcWriteTone`,
+`ledcWrite`, all pin-based). Verified build environment: Espressif32 8.0.0,
+Arduino Core 3.3.12, U8g2 2.36.15. `platform = espressif32` is not version-pinned;
+Core 2.x's channel-based API is not supported by this implementation.
+
+LEDC generates the waveform. A single 2 ms periodic `esp_timer` using
+`ESP_TIMER_TASK` advances the score independently of the main loop. This matters
+because the OLED's full-buffer 100 kHz I2C transfer takes roughly 100 ms.
+The callback only services the score/PWM; it neither renders nor logs. There
+is no dedicated audio task/stack and no allocation during play/stop. The timer
+is created once at initialization; keep the default manager alive for the life
+of the firmware, as the global `Robot` does. Future PWM users must account for
+LEDC timer sharing when changing frequency.
+
+`play(effect, loop)` always replaces/restarts playback. `stop()` cancels it.
+Commands use an atomic latest-request mailbox; PWM changes happen on the next
+timer service (nominally within 2 ms, subject to task scheduling). `isPlaying()`
+includes pauses and a pending play; a pending stop reports false. Back-to-back
+requests before service intentionally keep only the latest one. Delayed service
+skips expired segments/cycles instead of extending every note. No `delay()` or
+wait for sound completion is used. Initialization/output errors disable audio
+without latching the robot's ERROR state; runtime faults are logged once from
+the main loop, with best-effort silence and recovery on restart.
+
+On ESP32-C3, ESP-IDF implements the small standard atomic operations with short
+critical sections. Only scalar command/status access is protected; LEDC calls
+and score processing happen outside those sections.
+
+For host tests or another driver, inject `ToneOutput`, call `begin()` and service
+`update(nowMs)` manually. The default ESP32 instance services itself; calls to
+its `update()` do nothing. The SDL player uses the same score but generates PCM
+on the PC. Its playback-status query is synchronized with the audio callback.
+Start synchronization follows the behavior action; physical OLED presentation
+still has I2C latency and is not guaranteed to align to a particular tone.
+
+### Piezo hardware remains unverified
+
+GPIO3 controls a **verified driver circuit**, not an assumed 5 V GPIO load.
+The exact two-pin "5 V piezoelectric transducer" has not been identified.
+Confirm passive/external-drive operation, rated waveform/voltage, current or
+capacitance, resonance and the manufacturer's circuit before connecting it.
+An active buzzer cannot reproduce these arbitrary tone frequencies.
+
+For 5 V operation, use a suitable 3.3 V-controlled transistor/FET driver with
+common ground, a defined OFF state (external pull-down as appropriate), and
+the piezo discharge path/protection required by its datasheet. Component values
+depend on the actual part. Never route 5 V into GPIO3. Direct 3.3 V GPIO drive
+requires a separate check of the transducer and pin-current limits. Firmware
+cannot verify the load electrically. No physical upload, electrical measurements
+or sound/latency measurements on a connected piezo have been performed.

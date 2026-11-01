@@ -3,6 +3,15 @@
 BehaviourProgram::BehaviourProgram(AnimationOutput& output, BehaviourConfig config, Random random, void* context)
     : output_(output), config_(config), random_(random), randomContext_(context) { rng_ = config.randomSeed ? config.randomSeed : 1; }
 
+BehaviourProgram::BehaviourProgram(AnimationOutput& output, desktoprobot::SoundOutput& sound,
+    BehaviourConfig config, Random random, void* context)
+    : BehaviourProgram(output, config, random, context) { sound_ = &sound; }
+
+void BehaviourProgram::stopSound() { if (sound_) sound_->stop(); }
+void BehaviourProgram::playSound(desktoprobot::SoundEffect effect, bool loop) {
+    if (sound_ && soundsEnabled_) sound_->play(effect, loop);
+}
+
 uint32_t BehaviourProgram::randomValue() {
     if (random_) return random_(randomContext_);
     rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5;
@@ -11,25 +20,33 @@ uint32_t BehaviourProgram::randomValue() {
 uint32_t BehaviourProgram::range(uint32_t min, uint32_t max) {
     return min + (max > min ? randomValue() % (max - min + 1) : 0);
 }
-void BehaviourProgram::resetTimers() {
+void BehaviourProgram::resetTimers(bool resetBlink) {
     const auto index = static_cast<unsigned>(state_);
     if (index >= 3) return;
-    activityStart_ = blinkStart_ = now_;
+    activityStart_ = now_;
     activityDelay_ = range(config_.activityMinMs[index], config_.activityMaxMs[index]);
-    if (index < 2) blinkDelay_ = range(config_.blinkMinMs[index], config_.blinkMaxMs[index]);
+    if (resetBlink && index < 2) {
+        blinkStart_ = now_;
+        blinkDelay_ = range(config_.blinkMinMs[index], config_.blinkMaxMs[index]);
+    }
 }
-void BehaviourProgram::base() {
+void BehaviourProgram::base(bool resetBlink) {
+    stopSound();
     mode_ = Mode::Base;
     sequenceCount_ = 0; quickWake_=false;
+    spontaneousDelay_ = 0;
     output_.playBase(state_, now_);
-    resetTimers();
+    resetTimers(resetBlink);
 }
 void BehaviourProgram::begin(uint32_t now, LocalTime local) {
     now_ = now; local_ = local;
+    soundsEnabled_ = false; // Initial schedule reconciliation is silent.
     base();
     checkSchedule();
+    soundsEnabled_ = true;
 }
 void BehaviourProgram::start(Mode mode, const AnimationId* ids, unsigned count, bool holdLast) {
+    stopSound();
     quickWake_=false;
     mode_ = mode;
     sequenceCount_ = count;
@@ -52,10 +69,15 @@ void BehaviourProgram::transition(RobotState target, Mode mode, bool morning) {
     }
     if (count) start(mode, ids, count);
     else base();
+    if (definition) {
+        if (target == RobotState::IDLE) playSound(desktoprobot::SoundEffect::WakeUp);
+        else if (target == RobotState::SLEEP) playSound(desktoprobot::SoundEffect::FallAsleep);
+    }
 }
 void BehaviourProgram::setState(RobotState target) {
     if (state_ == RobotState::ERROR) return;
     if (target == RobotState::ERROR) {
+        stopSound();
         state_ = target; mode_ = Mode::Base; held_ = false;
         sequenceCount_ = 0; output_.showErrorFace(); return;
     }
@@ -101,10 +123,12 @@ void BehaviourProgram::handleEvent(InputEvent event) {
         if (mode_ == Mode::Shake) return;
         held_ = false;
         const auto id = AnimationId::Shaking;
-        start(Mode::Shake, &id, 1); return;
+        start(Mode::Shake, &id, 1);
+        playSound(desktoprobot::SoundEffect::Shake1, true); return;
     }
     if (event == InputEvent::SHAKE_END) {
         if (mode_ == Mode::Shake) {
+            stopSound();
             mode_ = Mode::Dizzy; sequenceCount_ = 0;
             output_.playShakeRecovery(now_);
         }
@@ -132,15 +156,17 @@ void BehaviourProgram::handleEvent(InputEvent event) {
             temporary_ = Temporary::IdleThenTired;
         }
     }
-    output_.interactionSound(held_);
+    stopSound();
     if (origin!=RobotState::IDLE && (!held_ || wasOpening)) {
         mode_=Mode::Reaction; sequenceCount_=count; sequenceIndex_=0; holdLast_=held_;
         for(unsigned i=0;i<count;++i) sequence_[i]=ids[i];
         quickWake_=true;
         if(!wasOpening) output_.playTouchWake(origin,now_);
     } else start(Mode::Reaction, ids, count, held_);
+    if (!held_) playSound(desktoprobot::SoundEffect::Tap1);
 }
 void BehaviourProgram::finishReaction() {
+    stopSound();
     if (temporary_ == Temporary::Early) returnState_ = RobotState::TIRED;
     if (state_ != returnState_) temporaryStart_ = now_;
     state_ = returnState_;
@@ -153,28 +179,37 @@ void BehaviourProgram::finishReaction() {
 }
 void BehaviourProgram::chooseActivity() {
     uint32_t total = config_.quietWeight;
-    const auto eligible = [&](unsigned i, RobotState state, uint32_t cooldown) {
-        return state == state_ && static_cast<int>(i) != lastActivity_
-            && (!played_[i] || now_-lastPlayed_[i] >= cooldown);
+    const auto isStartle = [](AnimationId id) {
+        return id == AnimationId::StartleLeft || id == AnimationId::StartleUpRight;
     };
-    for (unsigned i = 0; i < config_.activities.size(); ++i) {
-        const auto& a = config_.activities[i];
-        if (eligible(i, a.state, a.cooldownMs)) total += a.weight;
+    const auto activityAt = [&](unsigned i) {
+        return i == config_.activities.size()
+            ? Activity{AnimationId::SleepEyeOpen, RobotState::SLEEP, config_.sleepPeekWeight, config_.sleepPeekCooldownMs}
+            : config_.activities[i];
+    };
+    const auto eligible = [&](unsigned i, const Activity& a) {
+        return a.state == state_ && static_cast<int>(i) != lastActivity_
+            && (!played_[i] || now_-lastPlayed_[i] >= a.cooldownMs)
+            && (!isStartle(a.id) || !startlePlayed_ || now_-lastStartle_ >= config_.startleGroupCooldownMs);
+    };
+    for (unsigned i = 0; i < played_.size(); ++i) {
+        const auto a = activityAt(i);
+        if (eligible(i, a)) total += a.weight;
     }
-    if (eligible(13, RobotState::SLEEP, config_.sleepPeekCooldownMs)) total += config_.sleepPeekWeight;
     uint32_t choice = total ? randomValue()%total : 0;
-    if (choice < config_.quietWeight || !total) { resetTimers(); return; }
+    if (choice < config_.quietWeight || !total) { resetTimers(false); return; }
     choice -= config_.quietWeight;
-    for (unsigned i = 0; i < 14; ++i) {
-        const auto a = i == 13 ? Activity{AnimationId::SleepEyeOpen, RobotState::SLEEP, config_.sleepPeekWeight, config_.sleepPeekCooldownMs} : config_.activities[i];
-        if (!eligible(i, a.state, a.cooldownMs)) continue;
+    for (unsigned i = 0; i < played_.size(); ++i) {
+        const auto a = activityAt(i);
+        if (!eligible(i, a)) continue;
         if (choice < a.weight) {
             played_[i] = true; lastPlayed_[i] = now_; lastActivity_ = static_cast<int>(i);
+            if (isStartle(a.id)) { startlePlayed_ = true; lastStartle_ = now_; }
             start(Mode::Activity, &a.id, 1); return;
         }
         choice -= a.weight;
     }
-    resetTimers();
+    resetTimers(false);
 }
 void BehaviourProgram::update(uint32_t now, LocalTime local) {
     if (state_ == RobotState::ERROR) return;
@@ -197,9 +232,14 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
             return;
         }
         const bool wasBlink = mode_ == Mode::Blink;
+        const bool wasActivity = mode_ == Mode::Activity;
         const auto activityStart = activityStart_, activityDelay = activityDelay_;
-        base();
+        base(!wasActivity);
         if (wasBlink) { activityStart_ = activityStart; activityDelay_ = activityDelay; }
+        if (wasBlink || wasActivity) {
+            spontaneousStart_ = now_;
+            spontaneousDelay_ = range(config_.spontaneousGapMinMs, config_.spontaneousGapMaxMs);
+        }
     }
     if (temporary_ != Temporary::None && temporary_ != Temporary::Early && now_-temporaryStart_ >= config_.temporaryMs) {
         const bool toTired = temporary_ == Temporary::IdleThenTired;
@@ -209,10 +249,20 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
         return;
     }
     if (!spontaneous_ || touchPending_) return;
-    if (now_-activityStart_ >= activityDelay_) { chooseActivity(); return; }
-    if (state_ != RobotState::SLEEP && now_-blinkStart_ >= blinkDelay_) {
+    if (now_-spontaneousStart_ < spontaneousDelay_) return;
+    // Keep both independent deadlines, but leave a random breath between
+    // gestures. If both are due, serve the older deadline; randomize exact ties.
+    const uint32_t activityElapsed = now_-activityStart_, blinkElapsed = now_-blinkStart_;
+    const bool activityDue = activityElapsed >= activityDelay_;
+    const bool blinkDue = state_ != RobotState::SLEEP && blinkElapsed >= blinkDelay_;
+    if (activityDue && (!blinkDue || activityElapsed-activityDelay_ > blinkElapsed-blinkDelay_
+        || (activityElapsed-activityDelay_ == blinkElapsed-blinkDelay_ && (randomValue() & 1U)))) {
+        chooseActivity(); return;
+    }
+    if (blinkDue) {
         const auto id = state_ == RobotState::IDLE ? AnimationId::Blink : AnimationId::SlowBlink;
         start(Mode::Blink, &id, 1);
+        return;
     }
 }
 
@@ -258,4 +308,8 @@ void BehaviourProgram::playStep() {
  else output_.playAnimation(sequence_[sequenceIndex_],now_,
      (holdLast_ && sequenceIndex_+1==sequenceCount_) ||
      (mode_==Mode::Reaction && sequence_[sequenceIndex_]==AnimationId::Angry && returnState_==RobotState::TIRED));
+ // Sound belongs to the smile step, not the preceding opening/upward gaze.
+ // playStep runs only on entry, so a held smile cannot restart the sound.
+ if(mode_==Mode::Reaction && held_ && sequence_[sequenceIndex_]==AnimationId::Smile)
+     playSound(desktoprobot::SoundEffect::Hold);
 }

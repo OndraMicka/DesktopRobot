@@ -6,7 +6,13 @@ namespace desktoprobot
     {
         for (std::size_t index = 0; index < frame.commandCount; ++index)
         {
-            const DrawCommand& command = frame.commands[index];
+            DrawCommand command;
+            if (frame.packedCommands) {
+                const auto& packed = frame.packedCommands[index];
+                command = {static_cast<DrawCommandType>(packed.typeAndFilled & 0x7f),
+                    packed.x1, packed.y1, packed.x2, packed.y2,
+                    (packed.typeAndFilled & 0x80) != 0, packed.radius};
+            } else command = frame.commands[index];
 
             switch (command.type)
             {

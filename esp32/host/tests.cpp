@@ -5,7 +5,10 @@
 #include <vector>
 #include "Robot.h"
 #include "TimeManagerTests.h"
+#include "SoundManagerTests.h"
 #include "display/animations/AnimationCatalog.h"
+#include "display/animations/PowerOnAnimation.h"
+#include <algorithm>
 
 struct FakeOutput : AnimationOutput {
     std::vector<AnimationId> history;
@@ -30,6 +33,8 @@ void complete(BehaviourProgram& b, FakeOutput& o, uint32_t& now, LocalTime time=
     for (unsigned i=0;i<8 && b.busy();++i) { o.done=true; b.update(++now,time); }
     assert(!b.busy());
 }
+#include "ActivitySelectionTests.h"
+#include "BlinkSchedulingTests.h"
 void reset() {
     testTouchInterrupt=nullptr; testTouchContext=nullptr;
     testNow=0; testPin=0; testReads=0; Serial.log.clear();
@@ -44,6 +49,62 @@ void expect(InputController& input,InputEvent expected) {
 }
 void testConsole();
 void testNtpSchedule();
+uint32_t powerOnDuration() {
+    uint32_t duration=0;
+    const auto& animation=desktoprobot::getPowerOnAnimation();
+    for(std::size_t i=0;i<animation.frameCount;++i) duration+=animation.frames[i].durationMs;
+    return duration;
+}
+void finishStartup(Robot& robot) { testNow+=powerOnDuration(); robot.update(); }
+void testPowerOn() {
+    const auto& animation=desktoprobot::getPowerOnAnimation();
+    assert(!animation.loop && powerOnDuration()==4350);
+    desktoprobot::Framebuffer rendered, expected;
+    uint32_t time=0;
+    int previousHeight=0;
+    for(std::size_t i=0;i<animation.frameCount;++i) {
+        const auto& frame=animation.frames[i];
+        assert(frame.durationMs>0);
+        rendered.clear(); desktoprobot::drawFrame(frame,rendered);
+        if(time<900) assert(std::all_of(rendered.data().begin(),rendered.data().end(),[](auto p){return p==0;}));
+        if(time<1900) assert(frame.commandCount<=2);
+        if(frame.commandCount) {
+            assert(frame.commands[0].y2>=previousHeight);
+            previousHeight=frame.commands[0].y2;
+        }
+        if(time>=2300) assert(frame.commandCount==3 && frame.commands[2].x2==20 && frame.commands[2].y2==5);
+        time+=frame.durationMs;
+    }
+    desktoprobot::drawFrame(desktoprobot::getStateAnimation(desktoprobot::RobotState::Idle).frames[0],expected);
+    assert(rendered.data()==expected.data());
+    for(uint32_t start:{0U,UINT32_MAX-1000U}) {
+        reset(); testNow=start;
+        Robot robot; assert(robot.begin());
+        assert(sentFrames>=1);
+        assert(std::all_of(firstDisplayFrame.begin(),firstDisplayFrame.end(),[](auto p){return p==0;}));
+        assert(lastDisplayFrame==firstDisplayFrame);
+        robot.setLocalTime(12*3600);
+        robot.setSimulatedTime(12*3600); robot.useAutoTime();
+        robot.requestState(RobotState::SLEEP);
+        robot.handleEvent(InputEvent::TAP); robot.simulateShake(100);
+        for(uint32_t elapsed=0;elapsed<powerOnDuration();elapsed+=50) {
+            testNow=start+elapsed; testPin=(elapsed>=100 && elapsed<300) ? 1 : 0;
+            robot.update();
+            char status[512]; robot.describeStatus(status,sizeof(status));
+            assert(std::string(status).find("animation=POWER ON")!=std::string::npos);
+            if(elapsed<900) assert(lastDisplayFrame==firstDisplayFrame);
+        }
+        testNow=start+powerOnDuration(); robot.update();
+        char status[512]; robot.describeStatus(status,sizeof(status));
+        assert(std::string(status).find("animation=IDLE")!=std::string::npos);
+        robot.update(); assert(lastDisplayFrame==expected.data());
+    }
+    // Time configured during boot takes effect only after the arrival finishes.
+    reset(); Robot night; assert(night.begin()); night.setLocalTime(23*3600);
+    assert(night.state()==RobotState::IDLE);
+    finishStartup(night); assert(night.state()==RobotState::SLEEP);
+    std::cout<<"PASS: blank first frame, approved power-on pixels/timing, input and schedule priority, restart and rollover\n";
+}
 void verifyTouchReturn(const desktoprobot::Frame& frame) {
     desktoprobot::Framebuffer released, start, end, tired;
     desktoprobot::drawFrame(frame,released);
@@ -55,6 +116,11 @@ void verifyTouchReturn(const desktoprobot::Frame& frame) {
     assert(released.data()==start.data() && end.data()==tired.data());
 }
 int main() {
+    testBlinkScheduling();
+    testActivitySelection();
+    testPowerOn();
+    testSoundManager();
+    testSoundBehaviour<FakeOutput>();
     reset(); InputController input; input.begin();
     tick(input,10,1); tick(input,25,0); tick(input,70,0); expect(input,InputEvent::NONE);
     tick(input,100,1); tick(input,135,1); tick(input,200,0); tick(input,235,0); expect(input,InputEvent::TAP);
@@ -213,7 +279,7 @@ int main() {
       brain.setState(RobotState::ERROR); auto count=out.history.size(); brain.handleEvent(InputEvent::HOLD); brain.handleEvent(InputEvent::SHAKE_START);
       brain.setState(RobotState::IDLE); brain.update(999999,clockAt(7)); assert(out.error && brain.state()==RobotState::ERROR && out.history.size()==count); }
     // Deterministic activities, independent blink timer, no repeats and no interference with HOLD.
-    { FakeOutput out; BehaviourConfig c; c.randomSeed=19; c.activityMinMs[0]=c.activityMaxMs[0]=10000;
+    { FakeOutput out; BehaviourConfig c; c.spontaneousGapMinMs=c.spontaneousGapMaxMs=0; c.randomSeed=19; c.activityMinMs[0]=c.activityMaxMs[0]=10000;
       c.blinkMinMs[0]=c.blinkMaxMs[0]=1000; c.quietWeight=0;
       BehaviourProgram brain(out,c); uint32_t t=0; brain.begin();
       for(t=1000;t<10000;t+=1000) { brain.update(t); out.done=true; brain.update(t+1); }
@@ -243,8 +309,10 @@ int main() {
       }
       assert(!out.history.empty());
       for(auto id:out.history) {
-        if(state==RobotState::SLEEP) assert(id==AnimationId::SleepZ || id==AnimationId::SleepEyeOpen);
-        else assert(id==AnimationId::TiredYawn || id==AnimationId::SlowEyeMovement || id==AnimationId::SlowBlink);
+        bool allowed = (state==RobotState::SLEEP && id==AnimationId::SleepEyeOpen)
+            || (state==RobotState::TIRED && id==AnimationId::SlowBlink);
+        for(const auto& a:c.activities) if(a.state==state && a.id==id) allowed=true;
+        assert(allowed);
       }
     }
     // Scheduler elapsed time and animation playback are safe across millis wraparound.
@@ -344,7 +412,7 @@ void testConsole() {
     const auto occurrences=[](const std::string& text,const std::string& needle) {
         unsigned count=0; std::size_t pos=0; while((pos=text.find(needle,pos))!=std::string::npos) { ++count; pos+=needle.size(); } return count;
     };
-    reset(); Robot robot; assert(robot.begin()); pump(robot);
+    reset(); Robot robot; assert(robot.begin()); finishStartup(robot); pump(robot);
     command(robot,"help"); assert(Serial.log.find("Commands:")!=std::string::npos);
     command(robot,"status"); assert(Serial.log.find("AUTO")!=std::string::npos && Serial.log.find("UNSET")!=std::string::npos);
     command(robot,"sleep"); assert(robot.state()==RobotState::SLEEP); advance(robot,15000);
@@ -395,18 +463,18 @@ void testConsole() {
     for(unsigned i=0;i<30;++i) command(robot,"status");
     Serial.txCapacity=64; pump(robot,150); assert(Serial.log.find("Output overflow")!=std::string::npos);
     // Elapsed shake duration remains correct across millis wraparound.
-    reset(); testNow=UINT32_MAX-50; Robot wrapped; assert(wrapped.begin()); pump(wrapped);
+    reset(); testNow=UINT32_MAX-powerOnDuration()-50; Robot wrapped; assert(wrapped.begin()); finishStartup(wrapped); pump(wrapped);
     command(wrapped,"shake 100"); advance(wrapped,100);
     assert(status(wrapped).find("animation=DIZZY")!=std::string::npos);
     // Simulated tap and the physical input reach exactly the same behavior path.
-    reset(); Robot physical; assert(physical.begin()); pump(physical);
+    reset(); Robot physical; assert(physical.begin()); finishStartup(physical); pump(physical);
     testPin=1; physical.update(); testNow+=35; physical.update();
     testPin=0; physical.update(); testNow+=35; physical.update(); pump(physical);
     assert(status(physical).find("animation=ANGRY")!=std::string::npos);
     assert(Serial.log.find("[EVENT] TAP received")!=std::string::npos);
     // A complete tap between loop iterations is accepted during ANGRY and
     // immediately after its end, restarting the reaction without a dead zone.
-    reset(); Robot repeated; assert(repeated.begin()); pump(repeated);
+    reset(); Robot repeated; assert(repeated.begin()); finishStartup(repeated); pump(repeated);
     const auto shortTap=[&]() {
       const auto at=testNow+1;
       testTouchEdge(at,1); testTouchEdge(at+80,0);
@@ -418,16 +486,17 @@ void testConsole() {
     assert(status(repeated).find("mode=BASE")!=std::string::npos);
     shortTap(); assert(occurrences(Serial.log,"started ANGRY")==3);
     assert(status(repeated).find("animation=ANGRY")!=std::string::npos);
-    // Physical press wins both on the exact tick a blink becomes due and
-    // while a blink is already playing; release still delivers a full ANGRY.
-    for(bool alreadyBlinking:{false,true}) {
-      reset(); Robot priority; assert(priority.begin()); pump(priority);
-      testNow=6000;
-      if(alreadyBlinking) {
-        priority.update(); assert(status(priority).find("animation=BLINK")!=std::string::npos);
+    // Physical press wins when spontaneous playback becomes due and
+    // while an activity is already playing; release still delivers a full ANGRY.
+    for(bool alreadyPlaying:{false,true}) {
+      reset(); Robot priority; assert(priority.begin()); finishStartup(priority); pump(priority);
+      if(alreadyPlaying) {
+        for(unsigned i=0;i<800 && status(priority).find("mode=ACTIVITY")==std::string::npos;++i)
+          advance(priority,50);
+        assert(status(priority).find("mode=ACTIVITY")!=std::string::npos);
         pump(priority); // Drain the buffered start log before counting new blinks.
         ++testNow;
-      }
+      } else testNow+=6000;
       const auto blinks=occurrences(Serial.log,"started BLINK");
       testPin=1; priority.update();
       assert(status(priority).find("animation=IDLE")!=std::string::npos);

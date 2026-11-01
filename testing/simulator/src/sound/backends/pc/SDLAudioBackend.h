@@ -19,6 +19,7 @@ namespace desktoprobot
         void shutdown();
         bool play(const SoundDefinition& sound, std::string& error, bool loop = false) override;
         void stop() override;
+        bool isPlaying() const override;
 
     private:
         static void audioCallback(void* userdata, Uint8* stream, int length);
