@@ -7,7 +7,7 @@ struct TimeConfig {
     const char* password = "";
     uint32_t connectTimeoutMs = 15000;
     uint32_t ntpTimeoutMs = 15000;
-    uint32_t retryIntervalMs = 300000;
+    uint32_t retryIntervalMs = 30000;
     const char* server1 = "pool.ntp.org";
     const char* server2 = "time.cloudflare.com";
 };

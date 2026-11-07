@@ -12,6 +12,7 @@ void InputController::begin() {
  changedAt_=pressedAt_=millis();
  attachInterruptArg(digitalPinToInterrupt(Pins::TOUCH),onEdge,this,CHANGE);
 }
+bool InputController::beginMotionSensor() { return motion_.begin(); }
 void ARDUINO_ISR_ATTR InputController::onEdge(void* context) {
  auto& input=*static_cast<InputController*>(context);
 #ifdef ARDUINO
@@ -48,6 +49,10 @@ void InputController::settle(uint32_t now) {
  }
 }
 void InputController::update(uint32_t now) {
+ motion_.update(now);
+ MotionEvent motionEvent;
+ while (motion_.pollEvent(motionEvent))
+  emit(motionEvent == MotionEvent::SHAKE_START ? InputEvent::SHAKE_START : InputEvent::SHAKE_END);
  Edge batch[QueueSize]; unsigned count=0;
 #ifdef ARDUINO
  portENTER_CRITICAL(&touchMux);

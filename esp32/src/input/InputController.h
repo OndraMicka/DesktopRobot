@@ -1,9 +1,11 @@
 #pragma once
 #include <cstdint>
 #include "../behavior/BehaviourProgram.h"
+#include "MotionSensor.h"
 class InputController {
 public:
  void begin();
+ bool beginMotionSensor();
  void update(uint32_t nowMs);
  bool pollEvent(InputEvent& event);
  // Edges remain pending even while an OLED transfer blocks the main loop.
@@ -19,6 +21,7 @@ private:
  void settle(uint32_t now);
  void emit(InputEvent event);
  bool readTouch() const;
+ MotionSensor motion_;
  bool raw_ = false, stable_ = false, held_ = false;
  uint32_t changedAt_ = 0, pressedAt_ = 0;
 };

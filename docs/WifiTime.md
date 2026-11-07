@@ -7,7 +7,7 @@
 2. V novém checkoutu vytvoř tento soubor z `WifiConfig.example.h`, pokud ještě
    neexistuje. Bez konfigurace firmware sestavíš, ale vypíše chybějící konfiguraci.
 3. Výchozí timeout Wi-Fi je 15 s, timeout NTP dalších 15 s. Po neúspěchu se další
-   pokus spustí za 5 minut. Hodnoty a dva NTP servery lze upravit v konfiguraci.
+   pokus spustí za 30 sekund. Hodnoty a dva NTP servery lze upravit v konfiguraci.
 4. Sestav a nahraj projekt `esp32/`, potom otevři monitor na 115200 baud.
 
 Z terminálu ve složce `esp32`:

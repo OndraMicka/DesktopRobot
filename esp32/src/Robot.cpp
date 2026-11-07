@@ -150,8 +150,17 @@ void Robot::useAutoTime() {
 void Robot::updateClock(uint32_t now) {
  const auto elapsed=now-clockTick_; clockTick_=now;
  advance(simulatedTime_,simulatedRemainder_,elapsed);
+ const bool wasNtpSynced=timeManager_.status() && std::strcmp(timeManager_.status(),"NTP_SYNCED")==0;
  timeManager_.update(now);
  realTime_=timeManager_.localTime();
+ if (!ntpFailureAnimationShown_ && std::strcmp(timeManager_.status(),"RETRY_WAIT")==0) {
+  ntpFailureAnimationShown_=true;
+  display_.playWifiFailed(now);
+ }
+ if (!ntpAnimationShown_ && !wasNtpSynced && std::strcmp(timeManager_.status(),"NTP_SYNCED")==0) {
+  ntpAnimationShown_=true;
+  display_.playWifiConnected(now);
+ }
 }
 void Robot::describeStatus(char* buffer, std::size_t size) const {
  const auto time=effectiveTime();

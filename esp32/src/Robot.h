@@ -23,7 +23,7 @@ public:
  const DiagnosticResult& diagnostics() const { return result_; }
 private:
  LocalTime realTime_{}, simulatedTime_{};
- bool simulated_=false, shakePending_=false;
+ bool simulated_=false, shakePending_=false, ntpAnimationShown_=false, ntpFailureAnimationShown_=false;
  bool starting_=false;
  uint32_t clockTick_=0, simulatedRemainder_=0;
  uint32_t shakeStart_=0, shakeDuration_=0;

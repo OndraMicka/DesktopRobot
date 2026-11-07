@@ -27,5 +27,7 @@ DiagnosticResult HardwareDiagnostics::run(OutputDisplay& display, InputControlle
   return {false,"Display stopped responding during initialization"};
  }
  Serial.printf("[CHECK] OLED 0x%02X: OK\n",Pins::OLED_ADDRESS);
+ if (input.beginMotionSensor()) Serial.println("[CHECK] MPU6050 0x68: OK");
+ else Serial.println("[CHECK] MPU6050: unavailable; shake input disabled");
  return {true,nullptr};
 }

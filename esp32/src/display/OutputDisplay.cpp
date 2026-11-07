@@ -4,6 +4,31 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <cstdio>
+namespace {
+// A compact, two-frame Wi-Fi mark. AnimationPlayer restores the face loop when
+// this one-shot finishes, so connection feedback never changes behavior state.
+constexpr desktoprobot::DrawCommand wifiSmall[] = {
+ desktoprobot::line(106,10,110,7), desktoprobot::line(110,7,114,10),
+ desktoprobot::line(109,13,111,11), desktoprobot::pixel(110,16)
+};
+constexpr desktoprobot::DrawCommand wifiLarge[] = {
+ desktoprobot::line(99,12,110,3), desktoprobot::line(110,3,121,12),
+ desktoprobot::line(103,15,110,9), desktoprobot::line(110,9,117,15),
+ desktoprobot::line(107,17,110,14), desktoprobot::line(110,14,113,17),
+ desktoprobot::pixel(110,21)
+};
+constexpr desktoprobot::Frame wifiFrames[] = {{180,wifiSmall,4},{700,wifiLarge,7}};
+constexpr desktoprobot::Animation wifiAnimation{"WIFI CONNECTED",wifiFrames,2,false};
+constexpr desktoprobot::DrawCommand wifiFailed[] = {
+ desktoprobot::line(99,12,110,3), desktoprobot::line(110,3,121,12),
+ desktoprobot::line(103,15,110,9), desktoprobot::line(110,9,117,15),
+ desktoprobot::line(107,17,110,14), desktoprobot::line(110,14,113,17),
+ desktoprobot::pixel(110,21),
+ desktoprobot::line(99,2,121,22), desktoprobot::line(121,2,99,22)
+};
+constexpr desktoprobot::Frame wifiFailedFrames[] = {{900,wifiFailed,9}};
+constexpr desktoprobot::Animation wifiFailedAnimation{"WIFI FAILED",wifiFailedFrames,1,false};
+}
 bool OutputDisplay::begin() {
  display_.setI2CAddress(Pins::OLED_ADDRESS<<1);
  display_.setBusClock(Pins::I2C_HZ);
@@ -18,6 +43,18 @@ bool OutputDisplay::begin() {
 void OutputDisplay::playPowerOn(uint32_t now) {
  play(desktoprobot::getPowerOnAnimation(),now);
  update(now); // Send the blank opening frame immediately, before the first loop.
+}
+void OutputDisplay::playWifiConnected(uint32_t now) {
+ if (!ready_ || error_) return;
+ wifiOverlay_=&wifiAnimation; wifiOverlayStart_=now;
+ wifiOverlayFrame_=static_cast<std::size_t>(-1); dirty_=true;
+ report("[ANIM] started WIFI CONNECTED");
+}
+void OutputDisplay::playWifiFailed(uint32_t now) {
+ if (!ready_ || error_) return;
+ wifiOverlay_=&wifiFailedAnimation; wifiOverlayStart_=now;
+ wifiOverlayFrame_=static_cast<std::size_t>(-1); dirty_=true;
+ report("[ANIM] started WIFI FAILED");
 }
 void OutputDisplay::play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit) {
  if (!ready_ || error_) return;
@@ -44,6 +81,8 @@ void OutputDisplay::playTouchReturn(uint32_t now) {
 }
 void OutputDisplay::render() {
  framebuffer_.clear(); desktoprobot::drawFrame(player_.frame(),framebuffer_);
+ if (wifiOverlay_ && wifiOverlayFrame_ < wifiOverlay_->frameCount)
+  desktoprobot::drawFrame(wifiOverlay_->frames[wifiOverlayFrame_],framebuffer_);
  display_.clearBuffer();
  // Both buffers use vertical 8-pixel pages in the same 128x64 layout.
  memcpy(display_.getBufferPtr(),framebuffer_.data().data(),desktoprobot::Framebuffer::BufferSize);
@@ -58,6 +97,16 @@ void OutputDisplay::update(uint32_t now) {
  const auto* previous=&player_.frame();
  player_.update(now-lastUpdate_); lastUpdate_=now;
  dirty_=previous!=&player_.frame() || dirty_;
+ if (wifiOverlay_) {
+  uint32_t elapsed=now-wifiOverlayStart_;
+  std::size_t frame=0;
+  while (frame<wifiOverlay_->frameCount && elapsed>=wifiOverlay_->frames[frame].durationMs) {
+   elapsed-=wifiOverlay_->frames[frame].durationMs; ++frame;
+  }
+  if (frame>=wifiOverlay_->frameCount) {
+   wifiOverlay_=nullptr; wifiOverlayFrame_=static_cast<std::size_t>(-1); dirty_=true;
+  } else if (frame!=wifiOverlayFrame_) { wifiOverlayFrame_=frame; dirty_=true; }
+ }
  if (player_.isFinished() && !completionLogged_) {
   char message[96]; std::snprintf(message,sizeof(message),"[ANIM] finished %s",player_.getCurrentAnimation()->name); report(message); completionLogged_=true;
  }

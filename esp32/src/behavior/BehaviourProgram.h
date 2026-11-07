@@ -99,7 +99,7 @@ public:
     RobotState state() const { return state_; }
     bool busy() const { return mode_ != Mode::Base; }
 private:
-    enum class Mode { Base, Activity, Blink, Reaction, Transition, Schedule, Shake, Dizzy, TouchReturn };
+    enum class Mode { Base, Activity, Blink, Reaction, Transition, Schedule, Shake, Dizzy, ShakeAngry, TouchReturn };
     enum class Temporary { None, IdleThenTired, TiredThenSleep, Early };
     AnimationOutput& output_;
     desktoprobot::SoundOutput* sound_ = nullptr;

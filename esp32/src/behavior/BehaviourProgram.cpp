@@ -227,6 +227,18 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
             playStep();
             return;
         }
+        if (mode_ == Mode::Dizzy) {
+            const auto angry = AnimationId::Angry;
+            start(Mode::ShakeAngry, &angry, 1);
+            return;
+        }
+        if (mode_ == Mode::ShakeAngry) {
+            state_ = RobotState::IDLE;
+            temporary_ = Temporary::IdleThenTired;
+            temporaryStart_ = now_;
+            base();
+            return;
+        }
         if (mode_ == Mode::Reaction) {
             if (!held_) finishReaction();
             return;
@@ -290,7 +302,7 @@ void BehaviourProgram::changeTime(uint32_t now, LocalTime local, bool restoreSch
     checkSchedule();
 }
 const char* BehaviourProgram::modeName() const {
-    const char* names[] = {"BASE","ACTIVITY","BLINK","REACTION","TRANSITION","SCHEDULE","SHAKE","DIZZY","TOUCH_RETURN"};
+    const char* names[] = {"BASE","ACTIVITY","BLINK","REACTION","TRANSITION","SCHEDULE","SHAKE","DIZZY","SHAKE_ANGRY","TOUCH_RETURN"};
     return names[static_cast<unsigned>(mode_)];
 }
 const char* BehaviourProgram::temporaryName() const {
