@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <cstdio>
+#include <cstring>
 namespace {
 // A compact, two-frame Wi-Fi mark. AnimationPlayer restores the face loop when
 // this one-shot finishes, so connection feedback never changes behavior state.
@@ -56,6 +57,23 @@ void OutputDisplay::playWifiFailed(uint32_t now) {
  wifiOverlayFrame_=static_cast<std::size_t>(-1); dirty_=true;
  report("[ANIM] started WIFI FAILED");
 }
+void OutputDisplay::setTestClock(const LocalTime& time) {
+ char next[sizeof(clockText_)];
+ if (time.valid && time.second<86400) {
+  const unsigned hour=time.second/3600, minute=(time.second/60)%60, second=time.second%60;
+  next[0]='0'+hour/10; next[1]='0'+hour%10; next[2]=':';
+  next[3]='0'+minute/10; next[4]='0'+minute%10; next[5]=':';
+  next[6]='0'+second/10; next[7]='0'+second%10; next[8]='\0';
+ } else std::memcpy(next,"--:--:--",sizeof(next));
+ if (std::strcmp(next,clockText_)==0) return;
+ std::memcpy(clockText_,next,sizeof(clockText_));
+ dirty_=true;
+}
+void OutputDisplay::setClockVisible(bool visible) {
+ if (clockVisible_==visible) return;
+ clockVisible_=visible;
+ dirty_=true;
+}
 void OutputDisplay::play(const desktoprobot::Animation& animation, uint32_t now, std::size_t limit) {
  if (!ready_ || error_) return;
  player_.play(animation, limit); lastUpdate_=now; dirty_=true; completionLogged_=false;
@@ -86,6 +104,10 @@ void OutputDisplay::render() {
  display_.clearBuffer();
  // Both buffers use vertical 8-pixel pages in the same 128x64 layout.
  memcpy(display_.getBufferPtr(),framebuffer_.data().data(),desktoprobot::Framebuffer::BufferSize);
+ if (clockVisible_ && (!wifiOverlay_ || wifiOverlayFrame_>=wifiOverlay_->frameCount)) {
+  display_.setFont(u8g2_font_6x12_tf);
+  display_.drawStr(79,11,clockText_);
+ }
  if (error_) {
   display_.setFont(u8g2_font_6x12_tf);
   display_.drawStr(49,62,"ERROR");

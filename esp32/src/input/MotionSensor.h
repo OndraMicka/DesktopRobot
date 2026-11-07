@@ -8,7 +8,9 @@ enum class MotionSensitivity : uint8_t { LessSensitive, Normal, MoreSensitive };
 // Non-blocking MPU6050 input. The caller owns the I2C bus lifecycle.
 class MotionSensor {
 public:
+    using Log = void (*)(void*, const char*);
     bool begin();
+    void setLog(Log callback, void* context) { log_ = callback; logContext_ = context; }
     void update(uint32_t nowMs);
     bool pollEvent(MotionEvent& event);
     bool available() const { return available_; }
@@ -36,6 +38,8 @@ private:
     uint8_t reversals_ = 0;
     uint8_t readFailureCount_ = 0;
     uint32_t lastDiagnostic_ = 0;
+    Log log_ = nullptr;
+    void* logContext_ = nullptr;
     MotionEvent events_[4]{};
     uint8_t eventRead_ = 0, eventWrite_ = 0;
 

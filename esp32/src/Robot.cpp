@@ -21,10 +21,10 @@ void advance(LocalTime& time, uint32_t& remainder, uint32_t elapsed) {
 }
 }
 void Robot::log(const char* message) {
-#if ROBOT_DEBUG_CONSOLE
+#if ROBOT_DEBUG_CONSOLE && defined(ARDUINO)
  console_.log("%s\n",message);
 #else
- Serial.println(message);
+ char formatted[384]; formatLogLine(message,formatted,sizeof(formatted)); Serial.println(formatted);
 #endif
 }
 void Robot::outputLog(void* context, const char* message) { static_cast<Robot*>(context)->log(message); }
@@ -37,20 +37,21 @@ void Robot::reportState() {
 bool Robot::begin() {
  clockTick_=millis();
  display_.setLog(outputLog,this);
+ input_.setLog(outputLog,this);
  HardwareDiagnostics diagnostics;
- result_=diagnostics.run(display_,input_);
+ result_=diagnostics.run(display_,input_,outputLog,this);
  if (!sound_.begin()) {
-  log("[SOUND] Initialization failed; continuing without sound");
+  log("[ERROR] SOUND initialization failed; continuing without sound");
   soundFaultLogged_=true;
  } else log("[SOUND] GPIO3 LEDC ready; output silent (electrical load not verified)");
  if (!result_.ok) {
   char message[160]; std::snprintf(message,sizeof(message),"[ERROR] %s",result_.error); log(message);
   behavior_.setState(RobotState::ERROR);
  } else {
+  starting_=true;
   timeManager_.begin(millis(),outputLog,this);
   updateClock(millis());
   log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
-  starting_=true;
   display_.playPowerOn(millis());
  }
  reportState();
@@ -63,7 +64,7 @@ void Robot::update() {
  const uint32_t now=millis();
  sound_.update(now); // Host/manual driver; ESP32 advances in the ESP Timer task.
  if (!sound_.healthy() && !soundFaultLogged_) {
-  log("[SOUND] Output failed; sound disabled until restart"); soundFaultLogged_=true;
+  log("[ERROR] SOUND output failed; sound disabled until restart"); soundFaultLogged_=true;
  }
  if (state()!=RobotState::ERROR) {
   updateClock(now);
@@ -82,6 +83,7 @@ void Robot::update() {
   display_.update(eventNow);
   if (display_.isAnimationFinished()) {
    starting_=false;
+   display_.setClockVisible(true);
    input_.begin();
    behavior_.begin(eventNow,effectiveTime()); reportState();
   }
@@ -153,14 +155,15 @@ void Robot::updateClock(uint32_t now) {
  const bool wasNtpSynced=timeManager_.status() && std::strcmp(timeManager_.status(),"NTP_SYNCED")==0;
  timeManager_.update(now);
  realTime_=timeManager_.localTime();
- if (!ntpFailureAnimationShown_ && std::strcmp(timeManager_.status(),"RETRY_WAIT")==0) {
+ if (!starting_ && !ntpFailureAnimationShown_ && std::strcmp(timeManager_.status(),"RETRY_WAIT")==0) {
   ntpFailureAnimationShown_=true;
   display_.playWifiFailed(now);
  }
- if (!ntpAnimationShown_ && !wasNtpSynced && std::strcmp(timeManager_.status(),"NTP_SYNCED")==0) {
+ if (!starting_ && !ntpAnimationShown_ && !wasNtpSynced && std::strcmp(timeManager_.status(),"NTP_SYNCED")==0) {
   ntpAnimationShown_=true;
   display_.playWifiConnected(now);
  }
+ display_.setTestClock(effectiveTime());
 }
 void Robot::describeStatus(char* buffer, std::size_t size) const {
  const auto time=effectiveTime();
@@ -172,6 +175,40 @@ void Robot::describeStatus(char* buffer, std::size_t size) const {
   static_cast<unsigned long>(time.second/3600),static_cast<unsigned long>((time.second/60)%60),static_cast<unsigned long>(time.second%60),
   realTime_.valid ? "available" : "UNSET",timeManager_.status(),timeManager_.radioOff() ? "OFF" : "ON",behavior_.temporaryName(),static_cast<unsigned long>(behavior_.temporaryRemainingMs()),
   behavior_.touchHeld() ? "yes" : "no",shakePending_ ? "active" : "off",result_.error ? result_.error : "none",timeManager_.lastError() ? timeManager_.lastError() : "none");
+}
+void Robot::formatLogLine(const char* message,char* buffer,std::size_t size) const {
+ if (!size) return;
+ const auto time=effectiveTime();
+ char timestamp[16]{};
+ char categoryBuffer[24]{};
+ if (time.valid && time.second<86400)
+  std::snprintf(timestamp,sizeof(timestamp),"%02lu:%02lu:%02lu",
+   static_cast<unsigned long>(time.second/3600),static_cast<unsigned long>((time.second/60)%60),
+   static_cast<unsigned long>(time.second%60));
+ else {
+  const uint32_t uptime=millis()/1000;
+  std::snprintf(timestamp,sizeof(timestamp),"UP+%02lu:%02lu:%02lu",
+   static_cast<unsigned long>((uptime/3600)%100),static_cast<unsigned long>((uptime/60)%60),
+   static_cast<unsigned long>(uptime%60));
+ }
+ const char* category="CONSOLE";
+ const char* text=message ? message : "";
+ if (*text=='[') {
+  const char* close=std::strchr(text,']');
+  if (close && close>text+1) {
+   const auto length=static_cast<std::size_t>(close-text-1);
+   if (length<sizeof(categoryBuffer)) { std::memcpy(categoryBuffer,text+1,length); categoryBuffer[length]='\0'; category=categoryBuffer; text=close+1; while(*text==' ') ++text; }
+  }
+ }
+ std::snprintf(buffer,size,"%s %s %s",timestamp,category,text);
+}
+void Robot::describeComponents(char* buffer,std::size_t size) const {
+ std::snprintf(buffer,size,
+  "[COMPONENTS] OLED=%s; MPU6050=%s; TOUCH=GPIO%u configured; SOUND=%s\n"
+  "[COMPONENTS] WIFI=%s (radio %s); CLOCK=%s; STARTUP_DIAGNOSTICS=%s",
+  displayAvailable()?"OK":"FAILED",motionAvailable()?"OK":"UNAVAILABLE",static_cast<unsigned>(Pins::TOUCH),
+  soundAvailable()?"OK":"FAILED",timeManager_.status(),timeManager_.radioOff()?"OFF":"ON",
+  effectiveTime().valid?"VALID":"UNSET",result_.ok?"OK":"FAILED");
 }
 uint32_t Robot::randomValue(void*) {
 #ifdef ARDUINO

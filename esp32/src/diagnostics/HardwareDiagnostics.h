@@ -7,5 +7,6 @@ struct DiagnosticResult {
 };
 class HardwareDiagnostics {
 public:
- DiagnosticResult run(OutputDisplay& display, InputController& input);
+ using Log = void (*)(void*, const char*);
+ DiagnosticResult run(OutputDisplay& display, InputController& input, Log log = nullptr, void* context = nullptr);
 };

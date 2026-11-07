@@ -148,7 +148,7 @@ void TimeManager::begin(uint32_t now,Log log,void* context) {
 void TimeManager::shutdown(uint32_t now) {
     lastShutdown_=now;
     radioOff_=network_.stop();
-    report(radioOff_ ? "[TIME] Wi-Fi radio OFF; SNTP stopped" : "[TIME] ERROR: failed to switch Wi-Fi radio OFF; will retry shutdown");
+    report(radioOff_ ? "[TIME] Wi-Fi radio OFF; SNTP stopped" : "[ERROR] TIME failed to switch Wi-Fi radio OFF; will retry shutdown");
 }
 void TimeManager::attempt(uint32_t now) {
     if (!radioOff_) { fail("Wi-Fi radio shutdown incomplete",now); return; }
@@ -167,7 +167,7 @@ void TimeManager::fail(const char* reason,uint32_t now) {
         error_=errorDetails_;
     } else error_=reason;
     stage_=Stage::Retry; stageStart_=now;
-    char message[192]; std::snprintf(message,sizeof(message),"[TIME] FAILED: %s; retry in %lu ms",error_,static_cast<unsigned long>(config_.retryIntervalMs));
+    char message[192]; std::snprintf(message,sizeof(message),"[ERROR] TIME %s; retry in %lu ms",error_,static_cast<unsigned long>(config_.retryIntervalMs));
     report(message); shutdown(now);
 }
 void TimeManager::update(uint32_t now) {

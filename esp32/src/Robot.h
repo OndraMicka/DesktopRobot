@@ -19,8 +19,13 @@ public:
  void setSimulatedTime(uint32_t second);
  void useAutoTime();
  void describeStatus(char* buffer, std::size_t size) const;
+ void describeComponents(char* buffer, std::size_t size) const;
+ void formatLogLine(const char* message, char* buffer, std::size_t size) const;
  RobotState state() const { return behavior_.state(); }
  const DiagnosticResult& diagnostics() const { return result_; }
+ bool soundAvailable() const { return sound_.healthy(); }
+ bool motionAvailable() const { return input_.motionAvailable(); }
+ bool displayAvailable() const { return display_.ready(); }
 private:
  LocalTime realTime_{}, simulatedTime_{};
  bool simulated_=false, shakePending_=false, ntpAnimationShown_=false, ntpFailureAnimationShown_=false;

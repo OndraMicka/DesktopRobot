@@ -415,6 +415,10 @@ void testConsole() {
     reset(); Robot robot; assert(robot.begin()); finishStartup(robot); pump(robot);
     command(robot,"help"); assert(Serial.log.find("Commands:")!=std::string::npos);
     command(robot,"status"); assert(Serial.log.find("AUTO")!=std::string::npos && Serial.log.find("UNSET")!=std::string::npos);
+    command(robot,"components");
+    assert(Serial.log.find(" COMPONENTS OLED=OK")!=std::string::npos);
+    assert(Serial.log.find("TOUCH=GPIO1 configured")!=std::string::npos);
+    assert(Serial.log.find("UP+")!=std::string::npos);
     command(robot,"sleep"); assert(robot.state()==RobotState::SLEEP); advance(robot,15000);
     Serial.log.clear(); command(robot,"wake");
     assert(status(robot).find("WAKE UP")!=std::string::npos);
@@ -471,7 +475,7 @@ void testConsole() {
     testPin=1; physical.update(); testNow+=35; physical.update();
     testPin=0; physical.update(); testNow+=35; physical.update(); pump(physical);
     assert(status(physical).find("animation=ANGRY")!=std::string::npos);
-    assert(Serial.log.find("[EVENT] TAP received")!=std::string::npos);
+    assert(Serial.log.find(" EVENT TAP received")!=std::string::npos);
     // A complete tap between loop iterations is accepted during ANGRY and
     // immediately after its end, restarting the reaction without a dead zone.
     reset(); Robot repeated; assert(repeated.begin()); finishStartup(repeated); pump(repeated);

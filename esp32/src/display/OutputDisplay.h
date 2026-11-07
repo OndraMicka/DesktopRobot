@@ -8,9 +8,12 @@ public:
  using Log = void (*)(void*, const char*);
  void setLog(Log callback, void* context) { log_=callback; logContext_=context; }
  bool begin();
+ bool ready() const { return ready_ && !error_; }
  void playPowerOn(uint32_t now);
  void playWifiConnected(uint32_t now);
  void playWifiFailed(uint32_t now);
+ void setTestClock(const LocalTime& time);
+ void setClockVisible(bool visible);
  void playAnimation(AnimationId id, uint32_t now, bool holdExpression = false) override;
  void playTouchWake(RobotState source,uint32_t now) override;
  void playTouchLookUp(RobotState source, uint32_t now) override;
@@ -31,6 +34,8 @@ private:
  const desktoprobot::Animation* wifiOverlay_=nullptr;
  uint32_t wifiOverlayStart_=0;
  std::size_t wifiOverlayFrame_=static_cast<std::size_t>(-1);
+ char clockText_[9]="--:--:--";
+ bool clockVisible_=false;
  Log log_=nullptr;
  void* logContext_=nullptr;
  void report(const char* message);

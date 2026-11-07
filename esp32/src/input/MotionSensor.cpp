@@ -1,6 +1,7 @@
 #include "MotionSensor.h"
 #include <Wire.h>
 #include <cmath>
+#include <cstdio>
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
@@ -84,7 +85,8 @@ void MotionSensor::update(uint32_t nowMs) {
             available_ = false;
             if (shaking_) { shaking_ = false; emit(MotionEvent::SHAKE_END); lastShakeEnd_ = nowMs; }
 #ifdef ARDUINO
-            Serial.println("[MOTION] MPU6050 read failed repeatedly; sensor disabled until restart");
+            if (log_) log_(logContext_,"[ERROR] MPU6050 read failed repeatedly; motion sensor disabled until restart");
+            else Serial.println("[ERROR] MPU6050 read failed repeatedly; motion sensor disabled until restart");
 #endif
         }
         return;
@@ -114,14 +116,15 @@ void MotionSensor::update(uint32_t nowMs) {
     activitySum_ += dynamicG;
     activityIndex_ = (activityIndex_ + 1) % AverageSamples;
     if (activityCount_ < AverageSamples) ++activityCount_;
-    const float averageG = activitySum_ / activityCount_;
-
 #ifdef ARDUINO
+    const float averageG = activitySum_ / activityCount_;
     if (nowMs - lastDiagnostic_ >= 1000) {
         lastDiagnostic_ = nowMs;
-        Serial.printf("[MOTION] activity=%u mg reversalThreshold=%u mg reversals=%u shaking=%s\n",
+        char message[112];
+        std::snprintf(message,sizeof(message),"[MOTION] activity=%u mg reversalThreshold=%u mg reversals=%u shaking=%s",
             static_cast<unsigned>(averageG * 1000.0f), static_cast<unsigned>(triggerG_ * 1000.0f),
             reversals_, shaking_ ? "yes" : "no");
+        if (log_) log_(logContext_,message); else Serial.println(message);
     }
 #endif
 

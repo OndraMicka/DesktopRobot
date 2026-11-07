@@ -233,9 +233,8 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
             return;
         }
         if (mode_ == Mode::ShakeAngry) {
-            state_ = RobotState::IDLE;
-            temporary_ = Temporary::IdleThenTired;
-            temporaryStart_ = now_;
+            // Shaking is a reaction, not a wake request. Keep the current
+            // schedule/manual state when the reaction finishes.
             base();
             return;
         }

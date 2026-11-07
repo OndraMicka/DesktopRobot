@@ -4,8 +4,11 @@
 #include "MotionSensor.h"
 class InputController {
 public:
+ using Log = void (*)(void*, const char*);
+ void setLog(Log callback, void* context) { log_=callback; logContext_=context; motion_.setLog(callback,context); }
  void begin();
  bool beginMotionSensor();
+ bool motionAvailable() const { return motion_.available(); }
  void update(uint32_t nowMs);
  bool pollEvent(InputEvent& event);
  // Edges remain pending even while an OLED transfer blocks the main loop.
@@ -22,6 +25,8 @@ private:
  void emit(InputEvent event);
  bool readTouch() const;
  MotionSensor motion_;
+ Log log_=nullptr;
+ void* logContext_=nullptr;
  bool raw_ = false, stable_ = false, held_ = false;
  uint32_t changedAt_ = 0, pressedAt_ = 0;
 };

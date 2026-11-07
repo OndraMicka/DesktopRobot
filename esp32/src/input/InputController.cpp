@@ -1,10 +1,16 @@
 #include "InputController.h"
 #include "../config/Pins.h"
 #include <Arduino.h>
+#include <cstdio>
 #ifdef ARDUINO
 namespace { portMUX_TYPE touchMux = portMUX_INITIALIZER_UNLOCKED; }
 #endif
 bool InputController::readTouch() const { return (digitalRead(Pins::TOUCH)==HIGH)==Pins::TOUCH_ACTIVE_HIGH; }
+namespace {
+void reportInput(InputController::Log log,void* context,const char* message) {
+ if (log) log(context,message); else Serial.println(message);
+}
+}
 void InputController::begin() {
  pinMode(Pins::TOUCH,INPUT);
  edgeRead_=0; edgeWrite_=0; eventRead_=eventWrite_=0;
@@ -31,16 +37,17 @@ void InputController::emit(InputEvent event) {
  const unsigned next=(eventWrite_+1)%QueueSize;
  if(next!=eventRead_) { events_[eventWrite_]=event; eventWrite_=next; }
  const char* names[]={"NONE","TAP","HOLD","RELEASE","SHAKE_START","SHAKE_END"};
- Serial.printf("[EVENT] %s\n",names[static_cast<unsigned>(event)]);
+ char message[40]; std::snprintf(message,sizeof(message),"[EVENT] %s",names[static_cast<unsigned>(event)]);
+ reportInput(log_,logContext_,message);
 }
 void InputController::settle(uint32_t now) {
  if (raw_!=stable_ && now-changedAt_>=Pins::DEBOUNCE_MS) {
   stable_=raw_;
   if (stable_) {
    pressedAt_=changedAt_; held_=false;
-   Serial.println("[TOUCH] pressed");
+   reportInput(log_,logContext_,"[TOUCH] pressed");
   } else {
-   Serial.println("[TOUCH] released");
+   reportInput(log_,logContext_,"[TOUCH] released");
    emit(held_ ? InputEvent::RELEASE : InputEvent::TAP);
   }
  }

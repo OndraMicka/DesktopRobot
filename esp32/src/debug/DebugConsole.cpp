@@ -13,9 +13,23 @@ void DebugConsole::log(const char* format, ...) {
     const int n=std::vsnprintf(message,sizeof(message),format,args); va_end(args);
     if (n<0) return;
     const unsigned count=static_cast<unsigned>(n)<sizeof(message) ? static_cast<unsigned>(n) : sizeof(message)-1;
-    const unsigned used=(txWrite_+sizeof(tx_)-txRead_)%sizeof(tx_);
-    if (count>=sizeof(tx_)-used) { dropped_=true; return; }
-    for(unsigned i=0;i<count;++i) { tx_[txWrite_]=message[i]; txWrite_=(txWrite_+1)%sizeof(tx_); }
+    unsigned start=0;
+    while(start<count) {
+        unsigned end=start;
+        while(end<count && message[end]!='\n') ++end;
+        if(end>start) {
+            char source[640],formatted[768];
+            const unsigned length=end-start<sizeof(source)-1 ? end-start : sizeof(source)-1;
+            std::memcpy(source,message+start,length); source[length]='\0';
+            robot_.formatLogLine(source,formatted,sizeof(formatted));
+            const unsigned formattedLength=static_cast<unsigned>(std::strlen(formatted));
+            const unsigned used=(txWrite_+sizeof(tx_)-txRead_)%sizeof(tx_);
+            if(formattedLength+1>=sizeof(tx_)-used) { dropped_=true; return; }
+            for(unsigned i=0;i<formattedLength;++i) { tx_[txWrite_]=formatted[i]; txWrite_=(txWrite_+1)%sizeof(tx_); }
+            tx_[txWrite_]='\n'; txWrite_=(txWrite_+1)%sizeof(tx_);
+        }
+        start=end+1;
+    }
 }
 void DebugConsole::flush() {
     int budget=Serial.availableForWrite();
@@ -57,7 +71,7 @@ void DebugConsole::execute() {
     if (*argument) { *argument++='\0'; while(std::isspace(static_cast<unsigned char>(*argument))) ++argument; }
     const bool hasArgument=*argument!='\0';
     if (std::strcmp(command,"help")==0 && !hasArgument) {
-        log("Commands: help, status, state, diag, wake, tired, sleep, tap, hold, release, shake <1..600000 ms>, time HH:MM, time auto\n");
+        log("Commands: help, status, components, diag, wake, tired, sleep, tap, hold, release, shake <1..600000 ms>, time HH:MM, time auto\n");
         log("TIME <local epoch seconds> sets real fallback clock (legacy). Manual state requests keep the next schedule boundary. ERROR permits read-only commands.\n");
         return;
     }
@@ -67,6 +81,9 @@ void DebugConsole::execute() {
     if (std::strcmp(command,"diag")==0 && !hasArgument) {
         log("[DIAG] Startup: %s; cause=%s; TOUCH CONFIGURED (not electrically verified). No reset or reinitialization.\n",
             robot_.diagnostics().ok ? "OK" : "FAILED", robot_.diagnostics().error ? robot_.diagnostics().error : "none"); return;
+    }
+    if ((std::strcmp(command,"components")==0 || std::strcmp(command,"check")==0) && !hasArgument) {
+        char components[384]; robot_.describeComponents(components,sizeof(components)); log("%s\n",components); return;
     }
     if (robot_.state()==RobotState::ERROR) { log("[CONSOLE] Rejected: ERROR is latched until restart\n"); return; }
     if (!hasArgument) {
