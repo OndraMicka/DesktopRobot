@@ -270,12 +270,13 @@ int main() {
       brain.update(++t,clockAt(21)); assert(out.last()==AnimationId::IdleToTired);
       auto size=out.history.size(); brain.handleEvent(InputEvent::TAP); assert(out.history.size()==size);
       brain.handleEvent(InputEvent::RELEASE); complete(brain,out,t,clockAt(21)); assert(brain.state()==RobotState::TIRED); }
-    // Shake lifecycle, recovery interruption, sleep state preservation and ERROR latch.
+    // Shake lifecycle wakes from sleep after recovery, and preserves the ERROR latch.
     { FakeOutput out; BehaviourProgram brain(out); uint32_t t=0; brain.begin(); brain.setState(RobotState::SLEEP); complete(brain,out,t);
       brain.handleEvent(InputEvent::SHAKE_START); assert(out.last()==AnimationId::Shaking);
       brain.handleEvent(InputEvent::SHAKE_END); assert(out.recoveries==1);
       brain.handleEvent(InputEvent::SHAKE_START); assert(out.last()==AnimationId::Shaking);
-      brain.handleEvent(InputEvent::SHAKE_END); complete(brain,out,t); assert(brain.state()==RobotState::SLEEP);
+      brain.handleEvent(InputEvent::SHAKE_END); complete(brain,out,t); assert(brain.state()==RobotState::IDLE);
+      assert(std::strcmp(brain.temporaryName(),"NONE")==0);
       brain.setState(RobotState::ERROR); auto count=out.history.size(); brain.handleEvent(InputEvent::HOLD); brain.handleEvent(InputEvent::SHAKE_START);
       brain.setState(RobotState::IDLE); brain.update(999999,clockAt(7)); assert(out.error && brain.state()==RobotState::ERROR && out.history.size()==count); }
     // Deterministic activities, independent blink timer, no repeats and no interference with HOLD.

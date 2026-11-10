@@ -89,16 +89,16 @@ The goal is to keep the face and animation logic as independent from the display
 
 ## Status
 
-* [ ] Project structure
-* [ ] C++ OLED simulator
-* [ ] Basic face
-* [ ] Facial animations
-* [ ] OLED implementation
-* [ ] Touch interaction
-* [ ] Movement detection
-* [ ] Sound effects
-* [ ] Sleep mode
-* [ ] Wi-Fi time synchronization
+* [x] Project structure
+* [x] C++ OLED simulator
+* [x] Basic face
+* [x] Facial animations
+* [x] OLED implementation
+* [x] Touch interaction
+* [x] Movement detection
+* [x] Sound effects
+* [x] Sleep mode
+* [x] Wi-Fi time synchronization
 * [ ] 3D printed enclosure
 * [ ] Final assembly
 

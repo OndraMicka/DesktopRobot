@@ -233,8 +233,10 @@ void BehaviourProgram::update(uint32_t now, LocalTime local) {
             return;
         }
         if (mode_ == Mode::ShakeAngry) {
-            // Shaking is a reaction, not a wake request. Keep the current
-            // schedule/manual state when the reaction finishes.
+            // A complete shake reaction wakes the robot into IDLE. Do not
+            // start the temporary nap timer used by ordinary touch reactions.
+            state_ = RobotState::IDLE;
+            temporary_ = Temporary::None;
             base();
             return;
         }

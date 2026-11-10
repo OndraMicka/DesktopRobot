@@ -36,6 +36,7 @@ bool OutputDisplay::begin() {
  // U8g2 begin() cannot verify the physical display; diagnostics also checks ACK.
  ready_=display_.begin();
  if (ready_) {
+  display_.setContrast(80);
   // Clear retained OLED RAM before clocks, sound or any face can be started.
   framebuffer_.clear(); display_.clearBuffer(); display_.sendBuffer();
  }
