@@ -1,10 +1,13 @@
 #pragma once
 #include "../behavior/BehaviourProgram.h"
+#include <cstddef>
 #include <cstdint>
 
+struct WifiCredential { const char* ssid; const char* password; };
+
 struct TimeConfig {
-    const char* ssid = "";
-    const char* password = "";
+    const WifiCredential* networks = nullptr;
+    std::size_t networkCount = 0;
     uint32_t connectTimeoutMs = 15000;
     uint32_t ntpTimeoutMs = 15000;
     uint32_t retryIntervalMs = 30000;
@@ -18,7 +21,7 @@ public:
     enum class Connection { Pending, Connected, NoAccessPoint, AuthenticationFailed, Disconnected };
     virtual ~TimeNetwork() = default;
     virtual void configureTimezone(const char* timezone) = 0;
-    virtual bool connect(const char* ssid, const char* password) = 0;
+    virtual bool connect(const WifiCredential* networks, std::size_t count) = 0;
     virtual Connection connection() const = 0;
     virtual unsigned disconnectReason() const { return 0; }
     virtual const char* radioDetails() const { return nullptr; }

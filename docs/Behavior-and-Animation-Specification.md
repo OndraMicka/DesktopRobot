@@ -1,5 +1,11 @@
 # DesktopRobot — Behavior and Animation Specification
 
+This is the project's behavior and animation design specification. Requirements
+and acceptance scenarios here describe intended behavior; implementation details
+and known differences are recorded in [`esp32/README.md`](../esp32/README.md).
+For the current runtime source map, see
+[`DesktopRobot_implementace.md`](DesktopRobot_implementace.md).
+
 ## 1. Project Overview
 
 DesktopRobot is a small animated desktop companion with a 128×64 monochrome OLED display, a capacitive touch sensor, an MPU6050 motion sensor, a passive piezo buzzer, and an ESP32-C3 microcontroller.
@@ -815,7 +821,11 @@ Implement the system in stages.
 The MPU6050 input layer must expose `SHAKE_START` and `SHAKE_END` events.
 Use configurable detection thresholds and a quiet-time debounce before emitting
 `SHAKE_END`, so individual acceleration peaks do not restart the reaction.
-The sensor driver and threshold tuning remain firmware implementation work.
+The current firmware samples the MPU6050 every 10 ms, removes a moving gravity
+baseline, and requires repeated acceleration reversals over a default 0.070 g
+threshold. A single bump is ignored. The current implementation is documented
+in [`DesktopRobot_implementace.md`](DesktopRobot_implementace.md); hardware
+response still needs physical verification.
 
 * `SHAKE_START`: interrupt the current activity and loop `SHAKING` for as long
   as shaking continues. Use narrowed, inward-sloping eyes and short restrained
@@ -849,7 +859,7 @@ All six directed transitions have dedicated, non-looping animations:
 | IDLE | TIRED | IDLE TO TIRED: narrow eyes, yawn, settle into tired eyes |
 | IDLE | SLEEP | IDLE TO SLEEP: yawn, droop, close eyes and pause |
 | TIRED | IDLE | TIRED TO IDLE: blink, open eyes and look around |
-| TIRED | SLEEP | GO TO SLEEP: droop, briefly resist, close eyes |
+| TIRED | SLEEP | TIRED TO SLEEP: droop, briefly resist, close eyes |
 | SLEEP | IDLE | WAKE UP: existing gradual wake-up sequence |
 | SLEEP | TIRED | SLEEP TO TIRED: tentative opening, blink, sleepy gaze |
 

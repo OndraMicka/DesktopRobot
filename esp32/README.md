@@ -1,8 +1,9 @@
 # DesktopRobot firmware and shared behavior
 
-ESP32-C3 Super Mini, SH1106 128x64 and TTP223. The hardware test in
-`testing/testingFilmware/` remains separate. The SDL simulator now uses the same
-`BehaviourProgram` and animation definitions as firmware.
+ESP32-C3 Super Mini, SH1106 128x64, TTP223, MPU6050, and GPIO3 tone output. The
+standalone OLED/touch test in `testing/testingFilmware/` is separate. The SDL
+simulator shares `BehaviourProgram` and approved character-animation data with
+the firmware; it has its own renderer, controls, and audio backend.
 
 ## Wiring and build
 
@@ -14,8 +15,10 @@ ESP32-C3 Super Mini, SH1106 128x64 and TTP223. The hardware test in
 | Piezo driver control (3.3 V logic) | GPIO3 |
 | Module VCC / GND | 3V3 / GND |
 
-Configuration: `src/config/Pins.h`, active HIGH, debounce 35 ms, HOLD 700 ms,
-OLED address 0x3C (explicitly change to 0x3D for that panel).
+Configuration: `esp32/src/config/Pins.h`, active HIGH, debounce 35 ms, HOLD
+700 ms, OLED address 0x3C (explicitly change to 0x3D for that panel). The
+MPU6050 uses I2C address 0x68 and the default shake trigger is 0.070 g. The
+OLED uses local time for the behavior schedule but does not display a clock.
 
 ```powershell
 pio run -d esp32 -e esp32c3
@@ -34,7 +37,7 @@ and USB CDC flags are preserved; C++17 and ROBOT_COMPACT_ANIMATIONS are explicit
 
 ## Responsibilities
 
-- `main` calls Robot initialization and updates only.
+- `src/main.cpp` calls Robot initialization and updates only.
 - Robot runs startup checks, updates the clock, supplies input and renders output.
 - `behavior/BehaviourProgram` is portable C++ without Arduino or SDL. It owns
   schedules, temporary states, activity selection, priorities and sequences.
@@ -43,11 +46,11 @@ and USB CDC flags are preserved; C++17 and ROBOT_COMPACT_ANIMATIONS are explicit
 - The simulator AnimationPlayer provides explicit playback, retained final frames,
   bounded expression playback, interrupt/replace, loop timing and completion.
   Its previous auto-resume methods remain available for manual previews.
-- AnimationCatalog dispatches to individual classes in `src/display/animations/`,
-for example BlinkAnimation, AngryAnimation and SmileAnimation. Each class owns
-its hardcoded sequence and timing; AnimationBuilder supplies common geometry
-and interpolation. The simulator has its own TestAnimations.cpp implementation.
-All firmware sources live inside `esp32/`.
+- AnimationCatalog dispatches to classes in `esp32/src/display/animations/`,
+  such as BlinkAnimation, AngryAnimation and SmileAnimation. Each owns its
+  sequence and timing; AnimationBuilder supplies common geometry and
+  interpolation. The simulator has its own
+  `testing/simulator/src/animation/TestAnimations.cpp`.
 Firmware generates only
   the active animation in one static buffer; switching invalidates earlier frame
   references. Recovery captures the release pose before overwriting that buffer.
@@ -67,14 +70,17 @@ Build `esp32c3-production` to compile it out (`ROBOT_DEBUG_CONSOLE=0`).
 `time auto` restores the independently advancing real clock and reconciles the
 schedule, removing temporary debug reactions. Neither operation writes to NVS.
 
-AUTO is provided by `TimeManager`: after hardware diagnostics, ESP32 connects
-using `include/WifiConfig.h`, waits for a fresh verified NTP response, then stops
-SNTP and turns Wi-Fi OFF. Failed attempts retry without blocking behavior.
+AUTO is provided by `TimeManager`: after hardware diagnostics, ESP32 scans the
+saved networks in `include/WifiConfig.h`, waits for a fresh verified NTP
+response, then stops SNTP and turns Wi-Fi OFF. `WiFiMulti` scanning and
+connection polling can briefly block the main loop; details are in the
+[Wi-Fi setup guide](../docs/WifiTime.md).
 The exact Czech timezone is CET-1CEST,M3.5.0/2,M10.5.0/3.
-See [Wi-Fi setup and time verification](../docs/WifiTime.md).
 
 Copy `include/WifiConfig.example.h` to the Git-ignored `include/WifiConfig.h`
-if missing, then enter your SSID/password locally. Without credentials the
+if missing, then add an entry to `WifiConfig::NETWORKS` for each 2.4 GHz
+network and enter its SSID/password locally. The robot scans for saved networks
+and selects an available candidate. Without credentials the
 firmware builds but reports missing configuration and leaves time invalid.
 The ESP32 communicates directly with Wi-Fi/NTP; the PC is not a time provider.
 
@@ -108,8 +114,8 @@ boundary cancels the old interaction/sequence and its temporary return target;
 release cannot restore the obsolete state. Scheduled sequences cannot be
 interrupted by input. Duplicate SHAKE_START does not restart SHAKING; SHAKE_END
 uses the exact current frame for DIZZY, which a fresh SHAKE_START can interrupt.
-Shaking preserves the permanent state. Physical motion detection is not present;
-software can inject events through `Robot::handleEvent` and the simulator.
+Shaking preserves the permanent state. The MPU6050 driver emits physical shake
+events; the simulator can inject equivalent events through the shared behavior.
 
 `BehaviourConfig` contains per-state decision intervals, blink intervals,
 activity weights/cooldowns, quiet weight, temporary duration and random seed.
@@ -155,22 +161,23 @@ The simulator's AUTO mode uses this same behavior configuration.
 
 ## Specification reconciliation
 
-The detailed behavior specification and current simulator definitions take
-precedence over the earlier minimal-firmware implementation document.
+The behavior specification records design requirements. This guide and the
+current source describe what is implemented; the earlier implementation task
+document has been replaced with a current architecture overview.
 
 - SURPRISED no longer exists. SleepToTired provides the gradual waking/opening
   before Angry; no replacement startled animation was invented.
-- The current TIRED-to-SLEEP ID is TiredToSleep; its label is TIRED TO SLEEP,
-  although an older specification table calls it GO TO SLEEP.
+- The current TIRED-to-SLEEP animation ID and label are both
+  TiredToSleep / TIRED TO SLEEP.
 - Smile serves contented and self-satisfied expressions with combined weight 10.
   RandomCuriosity covers checking surroundings with weight 15. Other IDLE weights
   include LookAround 35, Thinking 10, IdleYawn 8, Bored 8 and Listening 7.
 - There are no dedicated HUM or almost-falling-asleep animations. These are not
   synthesized or selected. Quiet outcomes provide idle periods. Unspecified
   intervals, other weights and cooldowns are configurable initial defaults.
-- Buzzer hardware and a motion sensor are not connected. Firmware emits no sound
-  and performs no physical shake detection. The SDL adapter uses existing Tap1
-  and Hold1 interaction sounds. No new sound or hardware dependency was added.
+- Firmware implements tone playback through LEDC on GPIO3 and MPU6050 shake
+  detection. The physical piezo driver/load and sensor response still require
+  verification on assembled hardware; see the hardware limitations below.
 - Fixed schedule boundaries immediately preempt lower-priority playback. This
   follows the priority table; keeping an interaction beyond a boundary is not
   used. Arbitrary transitions between incompatible existing expressions do not
@@ -218,8 +225,9 @@ Catalog snapshots compare every pixel and frame duration of all 35 animations,
 three state loops and recovery from every shake frame. The compact and desktop
 catalog hashes match the original pre-change catalog.
 
-ESP32 build, host tests and SDL2 compilation passed. Physical upload, touch/OLED
-verification and interactive GUI checks were not performed.
+The repository contains PlatformIO firmware, host-test, and SDL2 simulator build
+definitions. No build, upload, or physical verification result is asserted here;
+record results for a specific revision when they are run.
 
 ## Touch reactions
 
@@ -252,7 +260,7 @@ scheduled sequences retain their original timing and priority.
 
 ## Sound
 
-`src/sound/SoundData.cpp` is the single score catalog for firmware and SDL.
+`esp32/src/sound/SoundData.cpp` is the single score catalog for firmware and SDL.
 Its constant arrays contain 16-bit frequency/duration pairs (4 bytes per
 segment); 0 Hz means a pause. Scores are read directly from flash on ESP32.
 SHAKE, TAP, wake-up, sleep and startup previews retain their original notes
@@ -322,8 +330,9 @@ still has I2C latency and is not guaranteed to align to a particular tone.
 
 ### Piezo hardware remains unverified
 
-GPIO3 controls a **verified driver circuit**, not an assumed 5 V GPIO load.
-The exact two-pin "5 V piezoelectric transducer" has not been identified.
+GPIO3 provides 3.3 V logic for a piezo driver; it is not a 5 V output. The exact
+two-pin "5 V piezoelectric transducer" has not been identified, and the driver
+circuit and electrical load have not been verified.
 Confirm passive/external-drive operation, rated waveform/voltage, current or
 capacitance, resonance and the manufacturer's circuit before connecting it.
 An active buzzer cannot reproduce these arbitrary tone frequencies.

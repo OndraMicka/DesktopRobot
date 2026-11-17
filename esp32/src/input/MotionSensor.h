@@ -23,7 +23,7 @@ private:
     static constexpr uint32_t QuietMs = 150;
     static constexpr uint32_t CooldownMs = 900;
     static constexpr float KeepAliveMotionG = 0.035f;
-    float triggerG_ = 0.060f, releaseG_ = 0.025f;
+    float triggerG_ = 0.070f, releaseG_ = 0.025f;
 
     static constexpr uint8_t AverageSamples = 5;
     bool available_ = false, baselineReady_ = false;

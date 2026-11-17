@@ -12,7 +12,7 @@ struct FakeTimeNetwork : TimeNetwork {
     int64_t epoch=0;
     std::string timezone;
     void configureTimezone(const char* tz) override { timezone=tz; }
-    bool connect(const char*,const char*) override { ++connections; started=true; off=false; return startOK; }
+    bool connect(const WifiCredential*,std::size_t) override { ++connections; started=true; off=false; return startOK; }
     Connection connection() const override { return link; }
     unsigned disconnectReason() const override { return reason; }
     void startNtp(const char* tz,const char*,const char*) override { ntp=true; notified=false; timezone=tz; }
@@ -21,7 +21,8 @@ struct FakeTimeNetwork : TimeNetwork {
     bool stop() override { ++shutdowns; ntp=false; off=stopOK; return off; }
 };
 inline void testTimeManager() {
-    TimeConfig config; config.ssid="test-network"; config.password="test-only";
+    const WifiCredential networks[]={{"test-network","test-only"}};
+    TimeConfig config; config.networks=networks; config.networkCount=1;
     config.connectTimeoutMs=100; config.ntpTimeoutMs=200; config.retryIntervalMs=500;
     constexpr int64_t epoch=1768478400; // 2026-01-15 12:00 UTC
     {

@@ -83,7 +83,7 @@ void Robot::update() {
   display_.update(eventNow);
   if (display_.isAnimationFinished()) {
    starting_=false;
-   display_.setClockVisible(true);
+   display_.setClockVisible(false);
    input_.begin();
    behavior_.begin(eventNow,effectiveTime()); reportState();
   }

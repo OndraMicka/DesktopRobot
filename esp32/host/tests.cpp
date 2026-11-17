@@ -522,7 +522,8 @@ void testConsole() {
 }
 
 void testNtpSchedule() {
-    FakeTimeNetwork network; TimeConfig config; config.ssid="test-only";
+    const WifiCredential networks[]={{"test-only",""}};
+    FakeTimeNetwork network; TimeConfig config; config.networks=networks; config.networkCount=1;
     TimeManager manager(network,config); manager.begin(0);
     network.link=TimeNetwork::Connection::Connected; manager.update(1);
     network.epoch=1768456799; // 2026-01-15 05:59:59 UTC == 06:59:59 CET

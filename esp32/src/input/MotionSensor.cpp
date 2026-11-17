@@ -69,7 +69,7 @@ void MotionSensor::setSensitivity(MotionSensitivity sensitivity) {
     case MotionSensitivity::LessSensitive: triggerG_ = 0.090f; releaseG_ = 0.040f; break;
     case MotionSensitivity::MoreSensitive: triggerG_ = 0.045f; releaseG_ = 0.018f; break;
     case MotionSensitivity::Normal:
-    default: triggerG_ = 0.060f; releaseG_ = 0.025f; break;
+    default: triggerG_ = 0.070f; releaseG_ = 0.025f; break;
     }
 }
 

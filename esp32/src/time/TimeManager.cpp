@@ -5,6 +5,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <esp_sntp.h>
 #include <atomic>
 #ifndef ROBOT_WIFI_TX_POWER_QDBM
@@ -24,6 +25,8 @@ class EspTimeNetwork final : public TimeNetwork {
     inline static std::atomic<unsigned> reason_{0};
     inline static std::atomic<bool> connecting_{false};
     char radioDetails_[144]{};
+    WiFiMulti wifiMulti_;
+    mutable uint32_t lastMultiRun_ = 0;
     bool eventRegistered_ = false;
     bool ntpStarted_ = false;
     static void disconnected(arduino_event_t* event) {
@@ -33,7 +36,7 @@ class EspTimeNetwork final : public TimeNetwork {
     static void notified(struct timeval*) { synchronized_.store(true, std::memory_order_release); }
 public:
     void configureTimezone(const char* tz) override { setenv("TZ",tz,1); tzset(); }
-    bool connect(const char* ssid, const char* password) override {
+    bool connect(const WifiCredential* networks, std::size_t count) override {
         if (!eventRegistered_) {
             WiFi.onEvent(disconnected,ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
             eventRegistered_=true;
@@ -44,22 +47,25 @@ public:
         if (!WiFi.mode(WIFI_STA)) return false;
         WiFi.setAutoReconnect(false);
         const bool sleepSet=WiFi.setSleep(false);
-        const auto result=WiFi.begin(ssid,password);
+        for (std::size_t i=0;i<count;++i) {
+            if (networks[i].ssid && *networks[i].ssid)
+                wifiMulti_.addAP(networks[i].ssid,networks[i].password ? networks[i].password : "");
+        }
+        lastMultiRun_=0;
         const bool powerSet=WiFi.setTxPower(static_cast<wifi_power_t>(ROBOT_WIFI_TX_POWER_QDBM));
         const int actual=static_cast<int>(WiFi.getTxPower());
         std::snprintf(radioDetails_,sizeof(radioDetails_),
             "[TIME] Radio profile: power_save=%s TX=%d.%02d dBm tx_setting=%s",
             sleepSet ? "OFF" : "SET_FAILED",actual/4,(actual%4)*25,powerSet ? "APPLIED" : "FAILED");
-        return result != WL_CONNECT_FAILED;
+        return count != 0;
     }
     Connection connection() const override {
-        switch(WiFi.status()) {
-        case WL_CONNECTED: return Connection::Connected;
-        case WL_NO_SSID_AVAIL: return Connection::NoAccessPoint;
-        case WL_CONNECT_FAILED: return Connection::AuthenticationFailed;
-        case WL_CONNECTION_LOST: return Connection::Disconnected;
-        default: return Connection::Pending;
+        const uint32_t now=millis();
+        if (now-lastMultiRun_>=1000) {
+            lastMultiRun_=now;
+            const_cast<WiFiMulti&>(wifiMulti_).run(1000);
         }
+        return WiFi.status()==WL_CONNECTED ? Connection::Connected : Connection::Pending;
     }
     const char* radioDetails() const override { return radioDetails_; }
     unsigned disconnectReason() const override { return reason_.load(std::memory_order_acquire); }
@@ -88,18 +94,19 @@ public:
             WiFi.disconnect(false,false,0);
             WiFi.mode(WIFI_OFF);
         }
+        wifiMulti_.APlistClean();
         return WiFi.getMode()==WIFI_OFF;
     }
 };
 TimeConfig platformConfig() {
-    return {WifiConfig::SSID,WifiConfig::PASSWORD,WifiConfig::CONNECT_TIMEOUT_MS,
+    return {WifiConfig::NETWORKS,WifiConfig::NETWORK_COUNT,WifiConfig::CONNECT_TIMEOUT_MS,
         WifiConfig::NTP_TIMEOUT_MS,WifiConfig::RETRY_INTERVAL_MS,WifiConfig::NTP_SERVER_1,WifiConfig::NTP_SERVER_2};
 }
 #else
 class EspTimeNetwork final : public TimeNetwork {
 public:
     void configureTimezone(const char*) override {}
-    bool connect(const char*,const char*) override { return false; }
+    bool connect(const WifiCredential*,std::size_t) override { return false; }
     Connection connection() const override { return Connection::Pending; }
     void startNtp(const char*,const char*,const char*) override {}
     bool takeSync(int64_t&) override { return false; }
@@ -153,10 +160,13 @@ void TimeManager::shutdown(uint32_t now) {
 void TimeManager::attempt(uint32_t now) {
     if (!radioOff_) { fail("Wi-Fi radio shutdown incomplete",now); return; }
     error_=nullptr; stageStart_=now; reportedReason_=0;
-    if (!config_.ssid || !*config_.ssid) { fail("Wi-Fi configuration missing: fill include/WifiConfig.h",now); return; }
-    report("[TIME] Connecting to configured Wi-Fi (credentials hidden)");
+    bool hasNetwork=false;
+    for (std::size_t i=0;i<config_.networkCount;++i)
+        if (config_.networks && config_.networks[i].ssid && *config_.networks[i].ssid) hasNetwork=true;
+    if (!hasNetwork) { fail("Wi-Fi configuration missing: fill include/WifiConfig.h",now); return; }
+    report("[TIME] Selecting from configured Wi-Fi networks (credentials hidden)");
     radioOff_=false; stage_=Stage::Connecting;
-    const bool started=network_.connect(config_.ssid,config_.password);
+    const bool started=network_.connect(config_.networks,config_.networkCount);
     if (const char* details=network_.radioDetails()) report(details);
     if (!started) fail("Wi-Fi initialization/connection start failed",now);
 }
