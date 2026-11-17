@@ -34,6 +34,8 @@ Reset with the monitor open to capture diagnostics; boot does not wait for USB.
 PlatformIO configuration is now standalone: inherited `extra_configs` used to
 overwrite the firmware build flags. Board, platform specification, U8g2 2.36.15
 and USB CDC flags are preserved; C++17 and ROBOT_COMPACT_ANIMATIONS are explicit.
+`partitions_singleapp.csv` assigns the remaining 4 MiB flash to one factory app
+partition so the current firmware fits. This layout does not provide OTA slots.
 
 ## Responsibilities
 
@@ -192,7 +194,9 @@ ACK cannot verify visible pixels. TTP223 is logged as CONFIGURED, not electrical
 verified. Display disconnection during runtime is not continuously monitored.
 
 On every successful boot/reset, the OLED is cleared before any face is shown.
-The shared POWER ON animation runs for 4.35 seconds: 900 ms blank, 1 second
+POWER ON starts before Wi-Fi polling; network scans wait until the animation
+finishes so they cannot skip its frames. The animation runs for 4.35 seconds:
+900 ms blank, 1 second
 unfolding the eyes sideways into lines, then 2 seconds opening them vertically.
 The mouth grows during the first 400 ms of that vertical opening, followed by
 a 450 ms hold. Touch, shake, state commands and schedule changes cannot replace

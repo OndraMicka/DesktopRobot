@@ -49,10 +49,10 @@ bool Robot::begin() {
   behavior_.setState(RobotState::ERROR);
  } else {
   starting_=true;
-  timeManager_.begin(millis(),outputLog,this);
-  updateClock(millis());
-  log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
+  // Start the face before any Wi-Fi setup or polling can delay OLED frames.
   display_.playPowerOn(millis());
+  timeManager_.begin(millis(),outputLog,this);
+  log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
  }
  reportState();
 #if ROBOT_DEBUG_CONSOLE
@@ -66,7 +66,7 @@ void Robot::update() {
  if (!sound_.healthy() && !soundFaultLogged_) {
   log("[ERROR] SOUND output failed; sound disabled until restart"); soundFaultLogged_=true;
  }
- if (state()!=RobotState::ERROR) {
+ if (state()!=RobotState::ERROR && !starting_) {
   updateClock(now);
  }
 #if ROBOT_DEBUG_CONSOLE
@@ -85,6 +85,8 @@ void Robot::update() {
    starting_=false;
    display_.setClockVisible(false);
    input_.begin();
+   updateClock(eventNow);
+   log(realTime_.valid ? "[CLOCK] AUTO ready" : "[CLOCK] AUTO UNSET: waiting for verified NTP or manual TIME");
    behavior_.begin(eventNow,effectiveTime()); reportState();
   }
   return;
